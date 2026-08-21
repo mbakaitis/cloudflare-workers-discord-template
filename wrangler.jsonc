@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "cloudflare-workers-template",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-18",
+  "observability": {
+    "enabled": true
+  },
+  "env": {
+    "non-prod": {
+      "name": "cloudflare-workers-template-non-prod"
+    },
+    "production": {
+      "name": "cloudflare-workers-template-production"
+    }
+  }
+}

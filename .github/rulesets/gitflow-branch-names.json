@@ -1,0 +1,22 @@
+{
+  "name": "gitflow-branch-names",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["~ALL"],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "branch_name_pattern",
+      "parameters": {
+        "operator": "regex",
+        "pattern": "^(main|develop|feature/[a-z0-9][a-z0-9._-]*|release/[a-z0-9][a-z0-9._-]*|hotfix/[a-z0-9][a-z0-9._-]*)$",
+        "negate": false
+      }
+    }
+  ],
+  "bypass_actors": []
+}

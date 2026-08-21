@@ -1,0 +1,49 @@
+name: Propose Upstream Sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 8 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: propose upstream changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch configured upstream
+        env:
+          UPSTREAM_REPOSITORY: ${{ vars.UPSTREAM_REPOSITORY || 'mbakaitis/workers' }}
+        run: |
+          git remote add upstream "https://github.com/${UPSTREAM_REPOSITORY}.git"
+          git fetch upstream main
+
+      - name: Merge upstream main
+        run: git merge --no-edit upstream/main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: upstream-sync
+          delete-branch: true
+          commit-message: "chore: sync upstream template changes"
+          title: "chore: propose upstream template sync"
+          body: |
+            This pull request proposes changes from the configured upstream template.
+
+            Review the diff for application-specific conflicts and confirm that all downstream tests pass before merging.
