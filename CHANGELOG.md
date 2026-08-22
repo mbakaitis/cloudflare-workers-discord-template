@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.1
+
+### Patch Changes
+
+- 7907eec: Remove `.github/rulesets/gitflow-branch-names.json`. GitHub rejects its `branch_name_pattern` rule on Free and Pro accounts (it requires GitHub Team or Enterprise), so the ruleset saved with an empty `rules` array and never enforced anything. `docs/using-this-template.md` step 5 now imports only `gitflow-protected-branches.json`, and branch naming is documented as a reviewed convention rather than a GitHub-enforced rule.
+
+  No migration needed: the removed rule never worked on Free/Pro, so no downstream project loses working enforcement.
+
+- 5edb3da: Remove `.github/rulesets/gitflow-protected-branches.json`, the last committed GitHub Ruleset payload. An imported ruleset can save with fewer rules than it declares depending on plan tier, organization policy, and repository visibility, so a committed JSON file that looks authoritative can silently drift from what GitHub actually enforces.
+
+  `docs/using-this-template.md` step 5 and `docs/gitflow-and-branching.md`'s "Required repository policy" section now document the equivalent settings as a manual checklist to apply through **Settings > Rules > Rulesets** (or classic branch protection), plus how to verify what actually saved with `gh api repos/OWNER/REPOSITORY/rulesets`. A new contract test in `test/contracts/workflow.test.js` asserts the CI job the docs point at as the required status check is still literally named `test`.
+
+  No migration needed: the ruleset file was never applied automatically, so downstream projects that already configured branch protection (by importing it or by hand) keep their existing GitHub-side settings. Projects that never got around to importing it should follow the new manual checklist.
+
 ## 0.2.0
 
 ### Minor Changes
