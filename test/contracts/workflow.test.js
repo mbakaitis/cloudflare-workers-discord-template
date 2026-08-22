@@ -123,6 +123,12 @@ describe("deployment workflow contract", () => {
     assert.match(workflow, /delete-branch:\s*true/);
   });
 
+  it("names the CI job 'test' to match the documented required status check", async () => {
+    const workflow = await readFile(workflowPaths[0], "utf8");
+
+    assert.match(workflow, /jobs:\s*\n\s*test:\n(?:.*\n)*?\s*name:\s*test\b/);
+  });
+
   it("keeps linting in the CI and deployment quality gates", async () => {
     for (const workflowPath of workflowPaths) {
       const workflow = await readFile(workflowPath, "utf8");

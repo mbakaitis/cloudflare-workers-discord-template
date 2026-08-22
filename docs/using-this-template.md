@@ -175,20 +175,28 @@ Then, and only then, enable deployment. `DEPLOY_ENABLED` is deliberately a repos
 
 Never commit these values or put them in `.env`, `.dev.vars`, or generated files.
 
-## 5. Apply the repository rules
+## 5. Configure branch protection
 
-`.github/rulesets/gitflow-protected-branches.json` describes the intended branch-protection rule for `main` and `develop`, but it does not apply itself. Import it through repository **Settings > Rules**, or through the API:
+This template does not ship a ruleset file to import. An imported JSON payload can save with fewer rules than it declares — plan tier, organization policy, and repository visibility all affect what GitHub accepts — so a committed file that looks authoritative can silently stop matching what's actually enforced. Configure the settings by hand instead, and verify what actually saved.
 
-```sh
-gh api --method POST /repos/OWNER/REPOSITORY/rulesets \
-  --input .github/rulesets/gitflow-protected-branches.json
-```
+Go to **Settings > Rules > Rulesets > New branch ruleset** (classic **Settings > Branches** protection rules work too) and apply this to both `main` and `develop`:
 
-Replace `OWNER/REPOSITORY`. Confirm the required status check is named `test`, matching the CI job in `.github/workflows/ci.yml`. Review the resulting rule in GitHub afterwards by fetching it back — `gh api repos/OWNER/REPOSITORY/rulesets/RULESET_ID` — and confirming its `rules` array actually contains what you expect, because organization policy and plan availability can change what GitHub accepts.
+| Setting | Value | Why |
+| --- | --- | --- |
+| Enforcement status | Active | "Evaluate" or "Disabled" protects nothing |
+| Restrict deletions | On | The branch can't be deleted |
+| Block force pushes | On | History can't be rewritten |
+| Require a pull request before merging | On | No direct pushes |
+| ↳ Required approvals | 1 | Minimum review gate |
+| ↳ Dismiss stale approvals on push | On | A new commit needs a fresh look |
+| ↳ Require conversation resolution | On | Open review threads can't be merged around |
+| Require status checks to pass | On | CI must be green |
+| ↳ Status check | `test` | Matches the job name in `.github/workflows/ci.yml` |
+| ↳ Require branches to be up to date before merging | On | No merging around a stale base |
 
-The intended policy: protect `develop` and `main` from direct pushes, deletion, force-pushes, and merges without a pull request and passing CI; require at least one approving review and resolved review threads.
+Do not add a `branch_name_pattern` rule. See [Gitflow and branching](gitflow-and-branching.md#branches-and-what-they-deploy) for why: it requires GitHub Team or Enterprise and is rejected outright on Free and Pro. Branch naming stays enforced through code review.
 
-Branch naming (see [Gitflow and branching](gitflow-and-branching.md#branches-and-what-they-deploy)) is not enforced by a ruleset. GitHub's Rulesets `branch_name_pattern` rule requires GitHub Team or Enterprise and is rejected outright on Free and Pro accounts, so this template does not ship it; branch naming is enforced through code review.
+After saving, confirm it actually took effect — `gh api repos/OWNER/REPOSITORY/rulesets` — and check that the ruleset's `enforcement` is `"active"` and its `rules` array contains everything in the table above. Re-check after any change to organization policy or plan.
 
 ## 6. Verify the deployment path
 
