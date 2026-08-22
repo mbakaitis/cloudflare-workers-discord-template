@@ -1,6 +1,6 @@
 # Cloudflare Workers Template Maintainer Guide
 
-**Instruction contract version:** 1.2.0
+**Instruction contract version:** 1.2.1
 
 This repository is the versioned boilerplate for Cloudflare Workers. It must remain useful when copied or forked into a new Worker project and must make future Cloudflare, Wrangler, and platform changes deliberate, testable, and documented.
 
@@ -20,6 +20,7 @@ This repository is the versioned boilerplate for Cloudflare Workers. It must rem
 - Keep `.mcp.json` and `.vscode/mcp.json` limited to non-secret server configuration. `.mcp.json` uses the Claude-compatible `mcpServers` schema; `.vscode/mcp.json` uses VS Code's `servers` schema. Keep `.claude/settings.local.json` local and permission-scoped; never add credentials or broaden MCP permissions merely to make a task convenient.
 - Record important decisions and breaking changes in repository documentation. Do not rely on an issue, chat message, or implicit knowledge.
 - Keep instructions actionable: name the command, file, invariant, or acceptance check whenever possible.
+- GitHub Rulesets' metadata-restriction rule types (`branch_name_pattern`, `tag_name_pattern`, `commit_message_pattern`, and the author/committer email pattern rules) require GitHub Team or Enterprise and are rejected on Free/Pro regardless of repository visibility. This template does not rely on them; branch naming is enforced by review only.
 
 ## Required project shape
 

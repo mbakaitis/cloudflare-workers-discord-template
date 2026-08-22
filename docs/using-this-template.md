@@ -177,18 +177,18 @@ Never commit these values or put them in `.env`, `.dev.vars`, or generated files
 
 ## 5. Apply the repository rules
 
-The files in `.github/rulesets/` describe the intended GitHub rules but do not apply themselves. Import both through repository **Settings > Rules**, or through the API:
+`.github/rulesets/gitflow-protected-branches.json` describes the intended branch-protection rule for `main` and `develop`, but it does not apply itself. Import it through repository **Settings > Rules**, or through the API:
 
 ```sh
-gh api --method POST /repos/OWNER/REPOSITORY/rulesets \
-  --input .github/rulesets/gitflow-branch-names.json
 gh api --method POST /repos/OWNER/REPOSITORY/rulesets \
   --input .github/rulesets/gitflow-protected-branches.json
 ```
 
-Replace `OWNER/REPOSITORY`. Confirm the required status check is named `test`, matching the CI job in `.github/workflows/ci.yml`. Review the resulting rules in GitHub afterwards, because organization policy and plan availability can change what is accepted.
+Replace `OWNER/REPOSITORY`. Confirm the required status check is named `test`, matching the CI job in `.github/workflows/ci.yml`. Review the resulting rule in GitHub afterwards by fetching it back — `gh api repos/OWNER/REPOSITORY/rulesets/RULESET_ID` — and confirming its `rules` array actually contains what you expect, because organization policy and plan availability can change what GitHub accepts.
 
-The intended policy: protect `develop` and `main` from direct pushes, deletion, force-pushes, and merges without a pull request and passing CI; require at least one approving review and resolved review threads; leave feature branches unprotected apart from the naming rule.
+The intended policy: protect `develop` and `main` from direct pushes, deletion, force-pushes, and merges without a pull request and passing CI; require at least one approving review and resolved review threads.
+
+Branch naming (see [Gitflow and branching](gitflow-and-branching.md#branches-and-what-they-deploy)) is not enforced by a ruleset. GitHub's Rulesets `branch_name_pattern` rule requires GitHub Team or Enterprise and is rejected outright on Free and Pro accounts, so this template does not ship it; branch naming is enforced through code review.
 
 ## 6. Verify the deployment path
 

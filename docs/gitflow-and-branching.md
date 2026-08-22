@@ -14,7 +14,7 @@ This is the day-to-day workflow: which branches exist, how work moves between th
 
 Branch names must use lowercase letters, numbers, dots, underscores, or hyphens after the prefix. `feature/add-health-check` is valid; `feature/AddHealthCheck` is not.
 
-The ruleset in `.github/rulesets/gitflow-branch-names.json` allows the documented prefixes, but it must be applied through GitHub repository settings before it can reject a noncompliant name.
+This is a naming convention enforced by review, not by GitHub. GitHub's Rulesets `branch_name_pattern` rule could enforce it automatically, but that rule requires GitHub Team or Enterprise and is rejected outright on Free and Pro accounts, so this template does not ship it.
 
 ## Starting work
 
@@ -67,9 +67,9 @@ The deployment workflow is skipped until the GitHub Actions repository **variabl
 
 ## Required repository policy
 
-Protect `develop` and `main` from direct pushes, deletion, force-pushes, and merges without a pull request and passing CI. Require at least one approving review and resolved review threads. Leave feature branches unprotected apart from the naming rule, so local development stays lightweight.
+Protect `develop` and `main` from direct pushes, deletion, force-pushes, and merges without a pull request and passing CI. Require at least one approving review and resolved review threads. Leave feature branches unprotected, so local development stays lightweight.
 
-The files in `.github/rulesets/` describe this policy but do not apply it automatically. Organization policy, repository ownership, and plan availability all affect which rules GitHub accepts, so inspect the ruleset after importing it. See [Using this template](using-this-template.md#5-apply-the-repository-rules) for the import commands.
+`.github/rulesets/gitflow-protected-branches.json` describes this policy but does not apply it automatically. Organization policy, repository ownership, and plan availability all affect which rules GitHub accepts, so fetch the ruleset back after importing it (`gh api repos/OWNER/REPOSITORY/rulesets/RULESET_ID`) and confirm its `rules` array actually contains what you expect. See [Using this template](using-this-template.md#5-apply-the-repository-rules) for the import commands.
 
 ## Rollback
 

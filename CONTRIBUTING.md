@@ -131,6 +131,6 @@ If you change a requirement in one, update the other two in the same pull reques
 | `test/contracts/` | Contract tests protecting the template's promises |
 | `docs/` | User-facing guides |
 | `.github/workflows/` | CI, deployment, release, and upstream sync |
-| `.github/rulesets/` | API-ready descriptions of the intended GitHub branch rules |
+| `.github/rulesets/` | API-ready description of the intended GitHub branch-protection ruleset |
 | `.changeset/` | Pending release notes |
 | `wrangler.jsonc` | Worker names, compatibility date, environments, bindings |
