@@ -1,6 +1,6 @@
 # Cloudflare Workers Template Maintainer Guide
 
-**Instruction contract version:** 1.2.1
+**Instruction contract version:** 1.3.0
 
 This repository is the versioned boilerplate for Cloudflare Workers. It must remain useful when copied or forked into a new Worker project and must make future Cloudflare, Wrangler, and platform changes deliberate, testable, and documented.
 
@@ -21,6 +21,7 @@ This repository is the versioned boilerplate for Cloudflare Workers. It must rem
 - Record important decisions and breaking changes in repository documentation. Do not rely on an issue, chat message, or implicit knowledge.
 - Keep instructions actionable: name the command, file, invariant, or acceptance check whenever possible.
 - GitHub Rulesets' metadata-restriction rule types (`branch_name_pattern`, `tag_name_pattern`, `commit_message_pattern`, and the author/committer email pattern rules) require GitHub Team or Enterprise and are rejected on Free/Pro regardless of repository visibility. This template does not rely on them; branch naming is enforced by review only.
+- More broadly, do not commit a GitHub Ruleset or branch-protection JSON payload as if it were an applied artifact. An imported payload can save with fewer rules than it declares depending on plan tier, organization policy, and repository visibility, so a file in this repository can silently stop matching what GitHub actually enforces. Document the exact settings a maintainer configures by hand (see `docs/using-this-template.md`), and let contract tests verify only what a checkout can observe — for example, that the CI job a required status check depends on still exists and is still named `test` — never live GitHub settings.
 
 ## Required project shape
 
