@@ -28,7 +28,6 @@ jobs:
         run: |
           git remote add upstream https://github.com/mbakaitis/cloudflare-workers-template.git
           git fetch upstream main
-          git checkout -b sync/upstream-updates
           git merge upstream/main -m "chore(template): sync updates from cloudflare-workers-template" || true
 
       - name: Check for unresolved conflicts
