@@ -1,0 +1,47 @@
+name: Sync Upstream Template
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'   # every Monday 04:00 UTC
+  workflow_dispatch:        # allows manual trigger from the Actions tab
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout downstream repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch and merge upstream
+        run: |
+          git remote add upstream https://github.com/mbakaitis/cloudflare-workers-template.git
+          git fetch upstream main
+          git checkout -b sync/upstream-updates
+          git merge upstream/main -m "chore(template): sync updates from cloudflare-workers-template" || true
+
+      - name: Check for unresolved conflicts
+        run: |
+          if git diff --name-only --diff-filter=U | grep .; then
+            echo "Merge conflicts detected — leaving them in the branch for manual resolution."
+          fi
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: sync/upstream-updates
+          title: "chore(template): sync updates from cloudflare-workers-template"
+          body: "Automated sync pulling the latest changes from the root template. If this PR shows conflict markers, resolve them locally before merging."
+          base: main
+          delete-branch: true
