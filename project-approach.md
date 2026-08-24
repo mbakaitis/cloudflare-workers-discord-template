@@ -43,22 +43,35 @@ Each stage is scoped to land as one reviewable PR, follows the repo's existing r
 ### Stage 2 — Decide and document the Discord app dependency surface
 *Addresses: goal 3.*
 
-Research (Cloudflare docs MCP + Discord developer docs) and decide, before writing code:
+**Decided:**
 
-- Signature verification approach: `discord-interactions` (small, Workers/edge-friendly, uses Web Crypto) vs. hand-rolled `SubtleCrypto` Ed25519 verification. Prefer the smallest dependency that keeps the Worker's cold-start fast and avoids Node-only APIs, consistent with the "no service/dependency added merely because it may be useful later" rule.
-- Command-registration story: a one-off Node script (run locally or in CI, not in the Worker) that calls Discord's `PUT /applications/{id}/commands` endpoint. Decide if this needs a dependency or is a plain `fetch` script.
-- Whether any of this needs a new `npm` script (`register-commands`?) and how that fits the existing script contract in `claude.md`.
-- Record the decision and its rationale (and the doc link) directly in this plan's own follow-up commit message and in `CHANGELOG.md`/`claude.md` once implemented — not left as a chat-only decision.
+- **Signature verification:** hand-roll Ed25519 verification with native `crypto.subtle` (`importKey` + `verify`). Zero dependencies — no `discord-interactions`/`tweetnacl`. Cloudflare Workers supports Ed25519 in Web Crypto natively, so this avoids third-party supply-chain surface and Node-polyfill assumptions for ~15–20 lines of code plus a small hex-decode helper. Interaction/response type constants (`PING`/`APPLICATION_COMMAND`, `PONG`/`CHANNEL_MESSAGE_WITH_SOURCE`, etc.) are plain JS constants with JSDoc typedefs, not a TypeScript enum — `claude.md` forbids introducing TypeScript as a project requirement. Doc links: [Cloudflare Web Crypto API](https://developers.cloudflare.com/workers/runtime-apis/web-crypto/), [MDN `SubtleCrypto.verify()`](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/verify), [Discord: validating security request signatures](https://discord.com/developers/docs/interactions/overview#setting-up-an-endpoint-validating-security-tokens).
+- **Command registration:** a standalone Node.js script (`scripts/register-commands.js`), zero dependencies, using native `fetch` and the `node --env-file` flag (no `dotenv`). It reads a shared command-definitions module and issues a `PUT` bulk-overwrite request to Discord's REST API — global (`PUT /applications/{id}/commands`) or guild-scoped (`PUT /applications/{id}/guilds/{guild_id}/commands`) depending on a flag. `PUT` bulk-overwrite creates/updates/prunes commands to match the repo's definitions in one call. Doc link: [Discord: bulk overwrite global application commands](https://discord.com/developers/docs/interactions/application-commands#bulk-overwrite-global-application-commands).
+- **npm scripts:** `register` (defaults to global, or targets a guild if `DISCORD_GUILD_ID` is set) and `register:guild` (explicit guild-scoped registration for fast iteration during development), both invoking `node --env-file=.dev.vars scripts/register-commands.js` (the second with a `--guild` flag). Node `>=22` (this repo's declared version) supports `--env-file` natively as a stable flag. The script reads `.dev.vars`, not a separate `.env` — see Stage 3's single-local-file decision.
+- **Shared command-definitions module:** Stage 4 (Worker dispatch) and Stage 5 (registration script) read command definitions from one shared JS module rather than declaring them independently, so command name/description/response text can't drift out of sync between the two. Exact file location is decided during Stage 4 implementation.
+- **Secret scope, decided together with Stage 3:** the runtime Worker receives `DISCORD_PUBLIC_KEY` (verification) and `DISCORD_APPLICATION_ID`, provisioned now even though Stage 4's minimal PING/PONG + synchronous-reply scope doesn't yet call back out to Discord's API — this avoids a future secret-provisioning step if a later stage adds outbound calls (deferred responses, message edits). The registration script additionally needs `DISCORD_TOKEN` (bot token, canonical name — not `DISCORD_BOT_TOKEN`) and optionally `DISCORD_GUILD_ID`. `DISCORD_TOKEN` is never a Worker secret. See Stage 3 for the full table and the single-file local-dev decision.
 
-Output of this stage is a decision, committed as an update to this plan file plus a changeset-worthy note; no application code yet.
+Changelog/changeset entry recording this decision lands with the Stage 4/5 implementation, not with this plan-file update alone — this stage's output is the decision and the updated plan.
 
 ### Stage 3 — Secrets and configuration streamlining
 *Addresses: goal 4.*
 
-- Enumerate the Discord-specific secrets a bot needs: `DISCORD_PUBLIC_KEY` (verification, not secret but environment-specific), `DISCORD_BOT_TOKEN`, `DISCORD_APPLICATION_ID`, optionally `DISCORD_GUILD_ID` for guild-scoped command testing.
-- Add a `.dev.vars.example` (no real values) so local dev has a documented shape without committing secrets — check `.gitignore` already excludes `.dev.vars`.
-- Decide the per-environment secret story consistent with the existing non-prod/production isolation rule: each environment gets its own Discord application (recommended — mirrors "production resources must never be silently reused") or one application with environment-scoped tokens. This needs to be an explicit, documented choice, not left implicit.
-- Extend the wrangler config guidance (`docs/using-this-template.md` §4-equivalent) with `wrangler secret put <NAME> --env <env>` steps for each secret above.
+**Decided: local secrets live in one project-scoped file, `.dev.vars`, never in machine-wide shell environment variables.** A developer working on more than one bot built from this template (a near-certainty for anyone maintaining several small Discord bots) would otherwise share one `DISCORD_TOKEN` across every checkout on the machine — easy to forget to re-export when switching projects, and since command registration is a `PUT` **bulk overwrite** (Stage 2), a stale exported token used against the wrong project directory doesn't just fail, it silently replaces another bot's real commands. Project-scoped files tie the secret to the directory the code runs from, which makes that mistake structurally impossible rather than a matter of developer discipline. This is the same isolation principle `claude.md` already states for Cloudflare resources ("production resources must never be silently reused by local or staging work"), applied to *which bot's credentials* rather than just *which environment's resources*. Cloudflare's dashboard and `wrangler secret put` are not an alternative to this — they configure secrets for a *deployed* Worker environment and have no bearing on local `wrangler dev` or a Node script run from a laptop, so the real choice was always project-scoped files vs. shell exports for local dev, not files vs. dashboard.
+
+**Decided: one local file, not two.** `DISCORD_PUBLIC_KEY` and `DISCORD_APPLICATION_ID` are technically not sensitive (the public key is public by design; the application ID appears in invite URLs), which would justify splitting them into committed `wrangler.jsonc` `vars` and keeping only `DISCORD_TOKEN`/`DISCORD_GUILD_ID` in a gitignored file. Rejected in favor of consolidation: every Discord value a developer needs — sensitive or not — lives in a single `.dev.vars` file, so there is exactly one place to configure "the Discord stuff" rather than a sensitivity-based split a new user has to reason about. `wrangler dev` reads `DISCORD_PUBLIC_KEY`/`DISCORD_APPLICATION_ID` from `.dev.vars` automatically; the registration script (Stage 5) reads all four values from the same file via `node --env-file=.dev.vars`, since `.dev.vars` is a plain `KEY=VALUE` file and Node's `--env-file` flag accepts any filename. This is documentation-simplicity-over-technical-purity, chosen deliberately, not an oversight.
+
+Per Stage 2's secret-scope decision, Discord-specific values split by *consumer* but not by *file*:
+
+| Name | Consumer | Notes |
+| --- | --- | --- |
+| `DISCORD_PUBLIC_KEY` | Worker (runtime) | Used for Ed25519 verification. Not sensitive, but stored alongside the real secrets for one consistent setup step. |
+| `DISCORD_APPLICATION_ID` | Worker (runtime) **and** registration script | Provisioned on the Worker now even though Stage 4's initial scope doesn't call back out to Discord's API, so a later stage that adds outbound calls doesn't need a new secret-provisioning step. The registration script needs it to build the bulk-overwrite URL. |
+| `DISCORD_TOKEN` | Registration script only | Bot token. Canonical name is `DISCORD_TOKEN`, not `DISCORD_BOT_TOKEN`. Never a Worker secret, never committed. |
+| `DISCORD_GUILD_ID` | Registration script only, optional | Enables guild-scoped command registration (`register:guild`) for fast iteration. |
+
+- One `.dev.vars.example` (no real values) covering all four names, with comments noting which consumer reads which. `.gitignore` excludes `.dev.vars`/`.dev.vars.*` and allows `!.dev.vars.example`; the previous `.env`/`.env.*`/`!.env.example` lines are removed since no `.env` file exists in this design.
+- **Decided: per-environment Discord application strategy.** Each environment gets its own Discord application — one shared by local development and `non-prod`, one dedicated to `production` — mirroring the existing non-prod/production Worker-naming split and the "production resources must never be silently reused" rule. Not one application with environment-scoped tokens.
+- Extend the wrangler config guidance (`docs/using-this-template.md`) with `wrangler secret put <NAME> --env <env>` steps for the two Worker values (`DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`), and document that `DISCORD_TOKEN`/`DISCORD_GUILD_ID` are never set there since the registration script never runs inside the deployed Worker.
 
 ### Stage 4 — Core Discord bot implementation (TDD)
 *Addresses: goal 6, built on Stages 2-3's decisions.*
@@ -66,19 +79,20 @@ Output of this stage is a decision, committed as an update to this plan file plu
 Smallest viable slice, each behavior landing with a failing test first:
 
 1. `fetch` handler rejects non-POST requests.
-2. `fetch` handler verifies the Ed25519 signature on incoming interactions and returns 401 on failure.
+2. `fetch` handler verifies the Ed25519 signature on incoming interactions using native `crypto.subtle` (per Stage 2's zero-dependency decision) and returns 401 on failure.
 3. Handler responds to Discord's `PING` (type 1) with `PONG` (type 1) — required for Discord to accept the interactions endpoint URL.
-4. Handler responds to one sample `APPLICATION_COMMAND` interaction (e.g. `/ping` → "pong") to prove the end-to-end shape works.
-5. Config surface for bot-specific strings (command name, response text) kept obviously separate from Worker/environment config, so a downstream project can find "what do I customize" in one place.
+4. Handler responds to one sample `APPLICATION_COMMAND` interaction (e.g. `/ping` → "pong") to prove the end-to-end shape works, dispatching against the shared command-definitions module (Stage 2) rather than a Worker-local copy.
+5. The shared command-definitions module itself (name, description, options, response text) lives obviously separate from Worker/environment config, so a downstream project can find "what do I customize" in one place, and so Stage 5's registration script can import the same source of truth.
 - Unit tests use the same `@cloudflare/vitest-pool-workers` setup already in the repo; no live Discord calls in tests — sign fixtures locally with a test keypair.
 - This stage is the natural point to reassess the Stage 1 instruction-contract version bump, since it likely adds a new required project-shape element (Discord signature verification) — treat as **minor** if it's additive to the existing contract, **major** only if it changes an existing required command or file layout.
 
 ### Stage 5 — Command registration script and its own test/doc coverage
 *Addresses: goal 3/6 follow-through.*
 
-- Implement the registration script decided in Stage 2.
-- Add a script-level test that doesn't hit the network (mock `fetch` or test the payload-building logic in isolation).
-- Document how and when to run it (once per app, or per command change) in `docs/using-this-template.md`.
+- Implement `scripts/register-commands.js` per Stage 2's decision: zero dependencies, native `fetch`, imports the shared command-definitions module from Stage 4, reads `DISCORD_TOKEN`/`DISCORD_APPLICATION_ID`/optional `DISCORD_GUILD_ID` via `node --env-file=.dev.vars`, issues a `PUT` bulk-overwrite request (global by default, guild-scoped with `--guild` or when `DISCORD_GUILD_ID` is set).
+- Add the `register` and `register:guild` npm scripts (Stage 2), matching the existing script-contract style in `claude.md`.
+- Add a script-level test that doesn't hit the network (mock global `fetch` or test the payload-building/URL-selection logic in isolation).
+- Document how and when to run it (once per app, or per command change) in `docs/using-this-template.md` — the single-`.dev.vars` decision from Stage 3 is already documented there.
 
 ### Stage 6 — Documentation overhaul
 *Addresses: goal 5, plus finishing the doc debt from Stages 0-5.*
@@ -114,6 +128,8 @@ Smallest viable slice, each behavior landing with a failing test first:
 
 ## Open questions to resolve as we go (not blocking Stage 0)
 
-- Ed25519 verification library choice (Stage 2) — needs a short spike/comparison before committing.
 - Per-environment vs. per-project Discord application strategy (Stage 3) — affects the setup doc's structure, decide before writing it.
+- Exact file location for the shared command-definitions module (Stage 2/4/5 decision) — pick during Stage 4 implementation.
 - Package version reset vs. continuation (Stage 8) — leaning toward reset; confirm before tagging anything.
+
+Resolved: Ed25519 verification approach, command-registration mechanism, npm script names, and secret naming/scope — see Stage 2.

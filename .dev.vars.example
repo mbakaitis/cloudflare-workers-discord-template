@@ -1,0 +1,19 @@
+# Copy this file to .dev.vars and fill in real values for your Discord application.
+# .dev.vars is gitignored — never commit the populated file.
+#
+# All Discord configuration for local development lives in this one file:
+#   - wrangler dev reads DISCORD_PUBLIC_KEY and DISCORD_APPLICATION_ID automatically.
+#   - scripts/register-commands.js reads DISCORD_TOKEN, DISCORD_APPLICATION_ID, and
+#     DISCORD_GUILD_ID via `node --env-file=.dev.vars`.
+#
+# See docs/using-this-template.md for how to get these values from the Discord
+# Developer Portal and how the same names map to `wrangler secret put` for
+# deployed environments.
+
+# Worker runtime (also used by the registration script)
+DISCORD_PUBLIC_KEY=
+DISCORD_APPLICATION_ID=
+
+# Registration script only — never used by the deployed Worker
+DISCORD_TOKEN=
+DISCORD_GUILD_ID=

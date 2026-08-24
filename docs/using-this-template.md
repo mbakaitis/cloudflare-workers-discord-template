@@ -172,7 +172,7 @@ Add these secrets at repository or environment scope:
 
 Then, and only then, enable deployment. `DEPLOY_ENABLED` is deliberately a repository **variable**, not a secret: it holds no sensitive value and exists purely as the explicit opt-in. Add it with the value `true` under **Settings > Secrets and variables > Actions > Variables**. Until it exists, the deploy job is skipped and no Cloudflare credentials are used.
 
-Never commit these values or put them in `.env`, `.dev.vars`, or generated files.
+Never commit these values or put them in `.dev.vars` or generated files.
 
 ## 5. Configure branch protection
 
@@ -220,12 +220,51 @@ If your project makes the package public or wants npm publication, update the Ch
 
 Full details are in [Versioning and changesets](versioning-and-changesets.md).
 
+## Configuring Discord secrets
+
+This Worker is a Discord bot, so it needs Discord's per-application credentials in addition to the Cloudflare setup above. Four values are involved, and only one of them (`DISCORD_TOKEN`) is genuinely sensitive — but all four live together, in the same place, at each tier, so there is exactly one spot to look for "the Discord config" rather than four:
+
+| Name | Used by | Notes |
+| --- | --- | --- |
+| `DISCORD_PUBLIC_KEY` | Deployed Worker, local `wrangler dev` | Verifies Discord's Ed25519 request signatures. Public by design — safe to see, but stored the same way as the rest of this table for one consistent, easy-to-document setup step. |
+| `DISCORD_APPLICATION_ID` | Deployed Worker, local `wrangler dev`, registration script | Identifies your Discord application. Also public (it appears in invite URLs). |
+| `DISCORD_TOKEN` | Registration script only | Your bot token. The one real secret here — never used by the deployed Worker, never committed. |
+| `DISCORD_GUILD_ID` | Registration script only, optional | A test server's ID, for guild-scoped command registration (`npm run register:guild`) during development. |
+
+**Per-environment Discord applications.** Create **two** Discord applications in the [Discord Developer Portal](https://discord.com/developers/applications), mirroring the non-prod/production split you already used for Worker names in step 2:
+
+- One application shared by local development and the `non-prod` Worker.
+- One application dedicated to the `production` Worker.
+
+This mirrors the existing rule that production resources are never silently reused by local or staging work (see [Environment isolation is enforced](#environment-isolation-is-enforced)) — applied to *which bot's credentials* as much as to Cloudflare resources. A leaked or misregistered non-prod token then can't touch the commands or the token real users' interactions rely on.
+
+**Local development.** Copy `.dev.vars.example` to `.dev.vars` and fill in the values from your non-prod/local Discord application:
+
+```sh
+cp .dev.vars.example .dev.vars
+```
+
+`.dev.vars` is gitignored and never committed. `wrangler dev` reads `DISCORD_PUBLIC_KEY` and `DISCORD_APPLICATION_ID` from it automatically; the registration script reads all four values from the same file via `node --env-file=.dev.vars` (see `npm run register` / `npm run register:guild`). One file, one place to fill in, for everything this bot needs to run and register commands locally.
+
+**Deployed environments.** The deployed Worker never reads `.dev.vars` — set its two values per environment with Wrangler:
+
+```sh
+npx wrangler secret put DISCORD_PUBLIC_KEY --env non-prod
+npx wrangler secret put DISCORD_APPLICATION_ID --env non-prod
+
+npx wrangler secret put DISCORD_PUBLIC_KEY --env production
+npx wrangler secret put DISCORD_APPLICATION_ID --env production
+```
+
+Use the non-prod/local application's values for `--env non-prod` and the production application's values for `--env production`. `DISCORD_TOKEN` and `DISCORD_GUILD_ID` are never set here — the registration script that uses them is a local/manual tool, not something the deployed Worker runs.
+
 ## Setup is complete when
 
 - `main` and `develop` both exist on your remote.
 - Branch rules prevent direct changes to `main` and `develop`.
 - The `non-prod` and `production` GitHub environments have the correct branch restrictions, and `production` requires a reviewer.
 - Your three Worker names are distinct, and any bindings are environment-specific and intentional.
+- You have two Discord applications (non-prod/local and production), `.dev.vars` is filled in locally, and both environments have `DISCORD_PUBLIC_KEY`/`DISCORD_APPLICATION_ID` set via `wrangler secret put`.
 - `npm test` passes, including the contract tests.
 - A merge to `develop` deploys non-production, and an approved merge to `main` deploys production.
 
