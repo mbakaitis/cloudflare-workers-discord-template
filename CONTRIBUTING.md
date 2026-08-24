@@ -130,6 +130,6 @@ If you change a requirement in one, update the other two in the same pull reques
 | `test/` | Unit tests |
 | `test/contracts/` | Contract tests protecting the template's promises |
 | `docs/` | User-facing guides |
-| `.github/workflows/` | CI, deployment, release, and upstream sync |
+| `.github/workflows/` | CI, deployment, and release |
 | `.changeset/` | Pending release notes |
 | `wrangler.jsonc` | Worker names, compatibility date, environments, bindings |

@@ -13,9 +13,8 @@ There are three ways to get these files, and they are not interchangeable. The d
 | Creates a GitHub repository for you | Yes | Yes | No |
 | Commit history | Fresh start, single initial commit | Full history of this repository | Full history, but no repository of your own |
 | Linked to this repository on GitHub | No | Yes, shown as "forked from" | No |
-| Automated upstream sync works | **No** | Yes | Not applicable |
 | Can open pull requests back to this repository | Not easily | Yes | No |
-| Best for | Real projects | Contributing upstream, or wanting automated sync | Evaluating the template |
+| Best for | Real projects | Contributing upstream | Evaluating the template |
 
 ### Use this template (recommended for real projects)
 
@@ -24,19 +23,19 @@ Select **Use this template > Create a new repository**, then choose the owner, n
 Two consequences to plan for:
 
 - GitHub copies only the default branch unless you check **Include all branches**. You will create `develop` yourself in step 3 either way, since this repository does not carry one.
-- Your repository shares **no commit history** with this one. That means `.github/workflows/upstream-sync.yml` cannot merge upstream changes into it — Git refuses to merge unrelated histories. See [Keeping up with upstream changes](#8-keeping-up-with-upstream-changes) for how to adopt updates by hand.
+- Your repository shares **no commit history** with this one, and Git refuses to merge unrelated histories. This template provides no automated mechanism for adopting later upstream changes; if you want them, follow this template's `CHANGELOG.md` and apply the ones you want by hand.
 
 ### Fork
 
-Select **Fork**, then choose the destination owner. Your project keeps this repository's full commit history and a live upstream link, so GitHub can compare the two and the automated sync workflow works out of the box.
+Select **Fork**, then choose the destination owner. Your project keeps this repository's full commit history and a live upstream link, so GitHub can compare the two.
 
 Trade-offs:
 
 - GitHub labels the repository as a fork, and a fork of a private repository stays private.
 - You get one fork per account for a given repository.
-- GitHub disables scheduled workflows in forks by default. Enable Actions in your fork, and expect to start the sync workflow with **Run workflow** on the Actions tab until you re-enable its schedule.
+- GitHub disables scheduled workflows in forks by default, which only matters if you add your own.
 
-Fork if you intend to send improvements back to this template, or if reviewing an automated upstream pull request each week is worth more to you than a clean history.
+Fork if you intend to send improvements back to this template, or if keeping the shared history for manual comparison (`git log`, `git diff`, `git cherry-pick` against this repository) is worth more to you than a clean history.
 
 ### Clone only
 
@@ -49,7 +48,7 @@ git remote set-url origin https://github.com/YOUR-OWNER/YOUR-REPOSITORY.git
 git push -u origin main
 ```
 
-This keeps the history but creates no fork link, so it behaves like the template path for upstream sync.
+This keeps the history but creates no fork link.
 
 ## 1. Create and clone your repository
 
@@ -220,46 +219,6 @@ Changesets is already configured. Keep the `.changeset/` directory and `.github/
 If your project makes the package public or wants npm publication, update the Changesets `access` and `privatePackages` settings, add registry authentication through CI secrets, and review the workflow before enabling publication. Do not put registry credentials in the repository.
 
 Full details are in [Versioning and changesets](versioning-and-changesets.md).
-
-## 8. Keeping up with upstream changes
-
-How you adopt template updates depends on the path you chose in [Choosing how to start](#choosing-how-to-start).
-
-### If you forked
-
-`.github/workflows/upstream-sync.yml` does the work. It runs weekly and on demand from the Actions tab, fetches `main` from the configured upstream, merges it into a temporary `upstream-sync` branch, runs your `npm run lint` and `npm test`, and opens a pull request only if everything passes.
-
-Set the repository Actions **variable** `UPSTREAM_REPOSITORY` to the upstream owner and repository, for example `mbakaitis/workers`. The workflow falls back to this template when the variable is unset. Do not put credentials in it; public upstream repositories are fetched over HTTPS.
-
-The workflow is intentionally review-only. A merge conflict or a failing project-specific test stops it and produces no pull request — that is the signal to sync by hand. Review every generated pull request for your own bindings, configuration, and migration notes before merging.
-
-### If you used the template
-
-The sync workflow cannot merge into your repository, because there is no shared history. Adopt changes deliberately instead. Add this repository as a second remote once:
-
-```sh
-git remote add upstream https://github.com/mbakaitis/workers.git
-git fetch upstream
-```
-
-Then pick up individual changes. `git cherry-pick` works across unrelated histories:
-
-```sh
-git log --oneline upstream/main
-git cherry-pick <commit>
-```
-
-Or review a single file before copying anything:
-
-```sh
-git diff HEAD upstream/main -- .github/workflows/ci.yml
-```
-
-Read this template's `CHANGELOG.md` for each release to see what changed and whether it requires migration. If you remove `.github/workflows/upstream-sync.yml` because you cannot use it, also remove the assertion that covers it in `test/contracts/workflow.test.js`, or your own contract tests will fail.
-
-### Either way
-
-Rollback is a reviewed revert or a deployment of the previous successful commit. Never hot-edit production code in the Cloudflare dashboard.
 
 ## Setup is complete when
 

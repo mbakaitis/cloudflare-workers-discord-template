@@ -1,6 +1,6 @@
 # Cloudflare Workers Template Instructions
 
-**Instruction contract version:** 1.3.0
+**Instruction contract version:** 2.0.0
 
 The canonical project guidance is in [claude.md](../claude.md). Apply it to every change in this repository.
 
@@ -14,7 +14,7 @@ This repository is versioned boilerplate for forkable Cloudflare Workers. Keep t
 - Run focused tests first, then JavaScript lint/format and Wrangler/configuration validation as available. Documentation-only changes that touch Markdown files alone need none of these; verify referenced commands, paths, and links instead and report the skip.
 - Keep CI aligned with the documented local checks and protect production deployment.
 - Update README/guides, migration notes, and changelog entries with behavior or workflow changes. Respect the document roles: `README.md` is a short consumer quickstart, `docs/using-this-template.md` is project setup, `docs/gitflow-and-branching.md` is branching and promotion, `docs/versioning-and-changesets.md` is releases, `docs/using-ai.md` is AI tooling and its guardrails, and `CONTRIBUTING.md` is for contributors to the template. Avoid duplicating content across them.
-- This is a real GitHub template repository, so "template" is accurate. Distinguish the consumption paths: **Use this template** shares no commit history with upstream, so `upstream-sync.yml` cannot merge into it and adoption is manual; a **fork** retains history and can use the workflow.
+- This is a real GitHub template repository, so "template" is accurate. Distinguish the consumption paths: **Use this template** shares no commit history with this repository; a **fork** retains history and a link back. This repository provides no automated upstream-sync mechanism for either path.
 - Apply Semantic Versioning: patch for compatible fixes, minor for compatible capabilities, major for breaking template contracts.
 - Treat the instruction contract version separately from `package.json`: patch clarifications, minor compatible requirements, and major changes that require forks to revise workflows. Keep it aligned with `claude.md` and `AGENTS.md`.
 - Design changes for reviewed downstream adoption by forks. Do not blindly overwrite application-specific code or promise automatic synchronization without a real mechanism.

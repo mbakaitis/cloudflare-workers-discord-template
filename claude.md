@@ -1,6 +1,6 @@
 # Cloudflare Workers Template Maintainer Guide
 
-**Instruction contract version:** 1.3.0
+**Instruction contract version:** 2.0.0
 
 This repository is the versioned boilerplate for Cloudflare Workers. It must remain useful when copied or forked into a new Worker project and must make future Cloudflare, Wrangler, and platform changes deliberate, testable, and documented.
 
@@ -103,7 +103,7 @@ Update documentation in the same change when behavior or workflow changes. Docum
 | File | Audience and role |
 | --- | --- |
 | `README.md` | Consumers: what the template is, quickstart, prerequisites, commands, and links onward. Keep it short and task-oriented; move detail into `docs/`. |
-| `docs/using-this-template.md` | Consumers: one-time project setup — how to start (GitHub template vs. fork vs. clone), Worker naming, environment isolation, bindings, secrets, repository rules, upstream adoption. |
+| `docs/using-this-template.md` | Consumers: one-time project setup — how to start (GitHub template vs. fork vs. clone), Worker naming, environment isolation, bindings, secrets, repository rules. |
 | `docs/gitflow-and-branching.md` | Consumers: branches, pull requests, promotion, deployment gating, and rollback. |
 | `docs/versioning-and-changesets.md` | Consumers: recording changesets, the release pull request, cutting versions and tags. |
 | `docs/using-ai.md` | Consumers: how AI tooling is wired in — instruction files, MCP servers, the contract-test and human-gate guardrails, and how to adapt the instruction files downstream. |
@@ -112,7 +112,7 @@ Update documentation in the same change when behavior or workflow changes. Docum
 
 Keep these roles distinct rather than duplicating content: state a fact in one document and link to it from the others. When renaming, splitting, or adding a document, update every cross-reference, including the README documentation table and the instruction files.
 
-This repository is a real GitHub template repository, so "template" is accurate terminology. Documentation must distinguish the two consumption paths, because they are not equivalent: a repository created with **Use this template** shares no commit history with upstream, so `.github/workflows/upstream-sync.yml` cannot merge into it and upstream adoption is manual; a **fork** retains history and an upstream link, so the sync workflow works. Do not describe automatic flow-down for the template path.
+This repository is a real GitHub template repository, so "template" is accurate terminology. Documentation must distinguish the two consumption paths, because they are not equivalent: a repository created with **Use this template** shares no commit history with this repository; a **fork** retains history and a link back to it. This repository does not provide an automated upstream-sync mechanism for either path — do not describe or promise automatic flow-down.
 
 Documentation must also distinguish local emulation from deployed Cloudflare behavior. Do not call a local test equivalent to an integration test unless it actually exercises the relevant Cloudflare service.
 

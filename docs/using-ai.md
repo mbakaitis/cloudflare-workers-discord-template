@@ -63,7 +63,7 @@ Instruction files are advisory. These are not.
 - Non-production and production Workers must have distinct names.
 - Production bindings must not sit in the top-level Wrangler configuration.
 - Deployment must stay behind the explicit `DEPLOY_ENABLED` opt-in.
-- The release and upstream-sync workflows must keep their reviewed shape.
+- The release workflow must keep its reviewed shape.
 - One Node.js version, declared in one place.
 
 This is the layer that makes AI assistance safe here. An assistant that suggests pointing non-production at a production database does not produce a subtle bug for a reviewer to catch six weeks later — it produces a failing test, immediately, before anything is deployed. When a contract test fails, that is the system working.

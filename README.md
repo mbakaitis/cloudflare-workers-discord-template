@@ -11,11 +11,10 @@ This is a GitHub template repository. Create your own project from it, then add 
 - Contract tests that fail if non-production and production configuration get crossed.
 - Separate `non-prod` and `production` Wrangler environments, with deployment disabled by default.
 - A documented branch, promotion, and release workflow.
-- An opt-in workflow that proposes upstream template updates as a reviewable pull request.
 
 ## Quickstart
 
-1. **Create your repository.** Select **Use this template** on GitHub for a clean start, or **Fork** if you want automated upstream sync. The two paths differ in ways worth understanding first — see [Choosing how to start](docs/using-this-template.md#choosing-how-to-start).
+1. **Create your repository.** Select **Use this template** on GitHub for a clean start, or **Fork** if you want to keep this repository's history and contribute improvements back. The two paths differ in ways worth understanding first — see [Choosing how to start](docs/using-this-template.md#choosing-how-to-start).
 
 2. **Clone it and install.** Clone the repository you just created, not this one.
 

@@ -24,20 +24,12 @@ const releaseWorkflowPath = new URL(
   "../../.github/workflows/release.yml",
   import.meta.url,
 );
-const upstreamSyncWorkflowPath = new URL(
-  "../../.github/workflows/upstream-sync.yml",
-  import.meta.url,
-);
 const workflowPaths = [
   new URL("../../.github/workflows/ci.yml", import.meta.url),
   new URL("../../.github/workflows/deploy.yml", import.meta.url),
 ];
 const nvmrcPath = new URL("../../.nvmrc", import.meta.url);
-const allWorkflowPaths = [
-  ...workflowPaths,
-  releaseWorkflowPath,
-  upstreamSyncWorkflowPath,
-];
+const allWorkflowPaths = [...workflowPaths, releaseWorkflowPath];
 
 describe("deployment workflow contract", () => {
   it("requires explicit deployment opt-in", async () => {
@@ -107,20 +99,6 @@ describe("deployment workflow contract", () => {
     assert.match(releaseWorkflow, /fetch-depth:\s*0/);
     assert.match(releaseWorkflow, /changesets\/action@v1/);
     assert.match(releaseWorkflow, /version:\s*npm run version/);
-  });
-
-  it("defines a review-only upstream sync workflow", async () => {
-    const workflow = await readFile(upstreamSyncWorkflowPath, "utf8");
-
-    assert.match(workflow, /workflow_dispatch:/);
-    assert.match(workflow, /schedule:/);
-    assert.match(workflow, /contents:\s*write/);
-    assert.match(workflow, /pull-requests:\s*write/);
-    assert.match(workflow, /git fetch upstream main/);
-    assert.match(workflow, /git merge --no-edit upstream\/main/);
-    assert.match(workflow, /peter-evans\/create-pull-request@v7/);
-    assert.match(workflow, /branch:\s*upstream-sync/);
-    assert.match(workflow, /delete-branch:\s*true/);
   });
 
   it("names the CI job 'test' to match the documented required status check", async () => {
