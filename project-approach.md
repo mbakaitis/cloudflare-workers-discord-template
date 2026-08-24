@@ -73,7 +73,7 @@ Per Stage 2's secret-scope decision, Discord-specific values split by *consumer*
 - **Decided: per-environment Discord application strategy.** Each environment gets its own Discord application — one shared by local development and `non-prod`, one dedicated to `production` — mirroring the existing non-prod/production Worker-naming split and the "production resources must never be silently reused" rule. Not one application with environment-scoped tokens.
 - Extend the wrangler config guidance (`docs/using-this-template.md`) with `wrangler secret put <NAME> --env <env>` steps for the two Worker values (`DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`), and document that `DISCORD_TOKEN`/`DISCORD_GUILD_ID` are never set there since the registration script never runs inside the deployed Worker.
 
-### Stage 4 — Core Discord bot implementation (TDD)
+### Stage 4 — Core Discord bot implementation (TDD) — done
 *Addresses: goal 6, built on Stages 2-3's decisions.*
 
 Smallest viable slice, each behavior landing with a failing test first:
@@ -85,6 +85,16 @@ Smallest viable slice, each behavior landing with a failing test first:
 5. The shared command-definitions module itself (name, description, options, response text) lives obviously separate from Worker/environment config, so a downstream project can find "what do I customize" in one place, and so Stage 5's registration script can import the same source of truth.
 - Unit tests use the same `@cloudflare/vitest-pool-workers` setup already in the repo; no live Discord calls in tests — sign fixtures locally with a test keypair.
 - This stage is the natural point to reassess the Stage 1 instruction-contract version bump, since it likely adds a new required project-shape element (Discord signature verification) — treat as **minor** if it's additive to the existing contract, **major** only if it changes an existing required command or file layout.
+
+**Decided/implemented:**
+
+- **File layout:** `src/discord-signature.js` (`verifyDiscordRequest(request, publicKeyHex)`, pure and independently unit-tested) and `src/command-definitions.js` (the shared command-definitions module named in Stage 2/3 — resolves the open question below). `src/index.js` imports both; it holds no signature or command logic itself.
+- **"Rejects non-POST" resolved as a routing split, not an HTTP error:** Discord only ever POSTs interactions, so the `fetch` handler treats any non-POST request as the non-Discord health/basic response required by `claude.md`'s project shape (`200 OK`) rather than erroring. Only a POST that fails signature verification gets a `401`; an unrecognized interaction `type` gets a `400`.
+- **Interaction/response type constants** are named exports (`InteractionType`, `InteractionResponseType`) from `src/index.js` — plain JS objects with JSDoc `@see` links to Discord's docs, not a TypeScript enum, so both the handler and its tests reference symbolic names instead of magic numbers.
+- **Unrecognized command names** get a fallback `"Unknown command."` reply instead of throwing, since a live bot can receive a stale interaction for a command that was since renamed or removed from `command-definitions.js`.
+- **Test fixtures:** `test/helpers/discord-fixtures.js` generates a throwaway Ed25519 keypair per test with `crypto.subtle.generateKey` and signs fixture requests the same way Discord does (Ed25519 over `timestamp + body`) — no real Discord public key, no network calls, no dependency on a local `.dev.vars` file existing in CI.
+- Confirmed via current Cloudflare docs that the Web Crypto API's Ed25519 support needs no compatibility flag (works with this repo's `compatibility_date`), reaffirming Stage 2's zero-dependency decision.
+- **Instruction contract version:** not bumped. Stage 1 already added signature verification/interaction handling/command registration to `claude.md`'s required project shape at 2.1.0; Stage 4 fulfills that existing requirement rather than adding a new one.
 
 ### Stage 5 — Command registration script and its own test/doc coverage
 *Addresses: goal 3/6 follow-through.*
@@ -129,7 +139,6 @@ Smallest viable slice, each behavior landing with a failing test first:
 ## Open questions to resolve as we go (not blocking Stage 0)
 
 - Per-environment vs. per-project Discord application strategy (Stage 3) — affects the setup doc's structure, decide before writing it.
-- Exact file location for the shared command-definitions module (Stage 2/4/5 decision) — pick during Stage 4 implementation.
 - Package version reset vs. continuation (Stage 8) — leaning toward reset; confirm before tagging anything.
 
-Resolved: Ed25519 verification approach, command-registration mechanism, npm script names, and secret naming/scope — see Stage 2.
+Resolved: Ed25519 verification approach, command-registration mechanism, npm script names, and secret naming/scope — see Stage 2. File location for the shared command-definitions module (`src/command-definitions.js`) and the Worker's signature-verification module (`src/discord-signature.js`) — see Stage 4.

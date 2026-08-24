@@ -13,7 +13,10 @@ export default [
       sourceType: "module",
       globals: {
         Response: "readonly",
+        Request: "readonly",
         URL: "readonly",
+        crypto: "readonly",
+        TextEncoder: "readonly",
         process: "readonly",
       },
     },
