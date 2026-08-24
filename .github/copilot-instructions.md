@@ -1,14 +1,15 @@
-# Cloudflare Workers Template Instructions
+# Cloudflare Workers Discord Bot Template Instructions
 
-**Instruction contract version:** 2.0.0
+**Instruction contract version:** 2.1.0
 
 The canonical project guidance is in [claude.md](../claude.md). Apply it to every change in this repository.
 
-This repository is versioned boilerplate for forkable Cloudflare Workers. Keep the base Worker minimal, use current official Cloudflare and Wrangler practices, and make all environment boundaries explicit:
+This repository is versioned boilerplate for a forkable Discord bot on Cloudflare Workers. Keep the base Worker minimal, use current official Cloudflare/Wrangler and Discord developer practices, and make all environment boundaries explicit:
 
 - Support local development plus named staging/non-production and production Wrangler environments.
 - Ensure local and staging cannot silently use production data, bindings, or secrets.
-- Use the Cloudflare documentation MCP server configured in `.mcp.json` or `.vscode/mcp.json` for current platform research when available; fall back to official Cloudflare documentation if MCP is unavailable.
+- Verify the Ed25519 signature on every incoming Discord interaction before handling it, and keep command registration as a separate script/process from the deployed `fetch` handler.
+- Use the Cloudflare documentation MCP server configured in `.mcp.json` or `.vscode/mcp.json` for current platform research when available; fall back to official Cloudflare documentation if MCP is unavailable. It does not cover Discord's API — consult Discord's developer documentation directly for Discord-facing behavior.
 - Keep credentials and secret values out of source, `.env` files, `.dev.vars`, and generated artifacts.
 - Use mandatory red-green-refactor TDD for behavior changes; maintain solid unit and regression tests, including deterministic tests for configuration-sensitive behavior. Keep implementation and tooling in JavaScript with mandatory JSDoc for exported functions, Worker handlers, configuration contracts, and non-obvious behavior; do not add TypeScript.
 - Run focused tests first, then JavaScript lint/format and Wrangler/configuration validation as available. Documentation-only changes that touch Markdown files alone need none of these; verify referenced commands, paths, and links instead and report the skip.

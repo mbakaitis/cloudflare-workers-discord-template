@@ -1,21 +1,22 @@
-# Cloudflare Workers Template Maintainer Guide
+# Cloudflare Workers Discord Bot Template Maintainer Guide
 
-**Instruction contract version:** 2.0.0
+**Instruction contract version:** 2.1.0
 
-This repository is the versioned boilerplate for Cloudflare Workers. It must remain useful when copied or forked into a new Worker project and must make future Cloudflare, Wrangler, and platform changes deliberate, testable, and documented.
+This repository is the versioned boilerplate for a Discord bot running on Cloudflare Workers. It must remain useful when copied or forked into a new Discord bot project and must make future Cloudflare, Wrangler, Discord API, and platform changes deliberate, testable, and documented.
 
 ## Mission and scope
 
-- Keep the smallest practical base Worker that developers can install with Wrangler and extend.
+- Keep the smallest practical Discord bot Worker that developers can install with Wrangler, point at a Discord application, and extend.
 - Treat this repository as a product: preserve a clear upgrade path, stable defaults, and a changelog.
-- Prefer Cloudflare's current official documentation and supported Wrangler behavior over assumptions or stale examples.
-- Keep template concerns separate from application-specific business logic. A template change should be easy to identify and safely adopt.
+- Prefer Cloudflare's current official documentation and supported Wrangler behavior, and Discord's current official developer documentation, over assumptions or stale examples.
+- Keep template concerns separate from application-specific bot logic (custom commands, business rules, integrations). A template change should be easy to identify and safely adopt.
 
 ## Source of truth and instructions
 
 - This file is the canonical maintenance guide. `AGENTS.md` and `.github/copilot-instructions.md` are entry points for tools that use those filenames; keep them aligned with this file.
 - Keep the instruction contract version in this file and its adapter files aligned. Use Semantic Versioning: patch for clarifications, minor for compatible requirements, and major for breaking instruction changes.
 - Before changing platform configuration, consult current Cloudflare documentation for Workers, Wrangler, environments, compatibility dates, bindings, secrets, deployments, and testing. When available, use the configured Cloudflare documentation MCP server in `.mcp.json` or `.vscode/mcp.json` for this lookup.
+- Before changing Discord-facing behavior (signature verification, interaction types, command registration, rate limits), consult current Discord developer documentation. The Cloudflare docs MCP server does not cover Discord's API; look it up directly and record the link where the decision is documented.
 - Treat MCP results as documentation research, not as authorization to change accounts, deploy code, create resources, or handle secrets. Verify important platform claims against the current official documentation and record the relevant documentation link or decision in repository docs when it affects the template contract.
 - Keep `.mcp.json` and `.vscode/mcp.json` limited to non-secret server configuration. `.mcp.json` uses the Claude-compatible `mcpServers` schema; `.vscode/mcp.json` uses VS Code's `servers` schema. Keep `.claude/settings.local.json` local and permission-scoped; never add credentials or broaden MCP permissions merely to make a task convenient.
 - Record important decisions and breaking changes in repository documentation. Do not rely on an issue, chat message, or implicit knowledge.
@@ -27,7 +28,10 @@ This repository is the versioned boilerplate for Cloudflare Workers. It must rem
 
 The implementation should normally include, or document why it does not include:
 
-- A minimal Worker entry point with an explicit `fetch` handler and a small health/basic response.
+- A minimal Worker entry point with an explicit `fetch` handler that serves as the Discord Interactions Endpoint URL, plus a small health/basic response for non-Discord requests.
+- Ed25519 signature verification on every incoming interaction request, rejecting anything that fails verification before any interaction payload is handled. This is a Discord platform requirement for the endpoint to be accepted, not an optional hardening step.
+- Interaction handling for at least Discord's `PING` (endpoint verification) and `APPLICATION_COMMAND` interaction types, with a documented path for adding more.
+- A command-registration story (script or documented process) for creating and updating the application's slash commands with Discord's API. Keep it separate from the deployed Worker — command registration is a one-off or per-change operation, not something the `fetch` handler does on every request.
 - JavaScript source using ES modules with mandatory JSDoc. Document exported functions, Worker handlers, configuration contracts, and non-obvious behavior so developers and AI tools can understand the code without reconstructing intent. Do not introduce TypeScript as a project requirement.
 - Wrangler configuration in the current supported format, with an explicit `compatibility_date` and Cloudflare best practices enabled:
   - **Observability enabled**: The `observability.enabled` setting captures logs and telemetry for monitoring and debugging.
@@ -39,7 +43,7 @@ The implementation should normally include, or document why it does not include:
 - A local-development path that works without access to production resources. Use local emulation, fixtures, or explicit local bindings where appropriate.
 - A single declared Node.js version. `.nvmrc` is the source of truth; `engines.node` in `package.json` and every workflow's `node-version-file` must agree with it, and a contract test enforces that. Do not hardcode a Node version in a workflow.
 - A mandatory test setup that runs quickly in CI and locally, with unit tests for the Worker handler and meaningful tests for environment-sensitive behavior.
-- Documentation covering setup, development, testing, deployment, secrets, environments, and upgrades.
+- Documentation covering setup, development, testing, deployment, secrets, environments, upgrades, and Discord application configuration (public key, bot token, application ID, Interactions Endpoint URL).
 
 Do not add a service, binding, dependency, or deployment target merely because it may be useful later. Every addition needs a documented purpose, ownership, local-development story, test strategy, and rollback or removal path.
 
