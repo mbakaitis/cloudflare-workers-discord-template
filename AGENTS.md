@@ -1,14 +1,15 @@
 # Agent Instructions
 
-**Instruction contract version:** 2.0.0
+**Instruction contract version:** 2.1.0
 
-Use [claude.md](claude.md) as the canonical maintenance guide for this Cloudflare Workers template.
+Use [claude.md](claude.md) as the canonical maintenance guide for this Cloudflare Workers Discord bot template.
 
 Before editing, read the relevant section of `claude.md`. In particular:
 
 - Preserve explicit local, staging/non-production, and production Wrangler environments.
 - Keep local development independent from production resources and secrets.
-- Use the Cloudflare documentation MCP server configured in `.mcp.json` or `.vscode/mcp.json` for current platform research when it is available; do not treat MCP access as deployment or account authorization.
+- Keep Ed25519 signature verification on every incoming Discord interaction, and keep command registration separate from the deployed `fetch` handler.
+- Use the Cloudflare documentation MCP server configured in `.mcp.json` or `.vscode/mcp.json` for current platform research when it is available; do not treat MCP access as deployment or account authorization. It does not cover Discord's API — look up Discord developer documentation directly for Discord-facing behavior.
 - Use mandatory red-green-refactor TDD for behavior changes, add regression tests, and run focused tests before broader checks. Keep implementation and tooling in JavaScript with mandatory JSDoc for exported functions, Worker handlers, configuration contracts, and non-obvious behavior; do not add TypeScript.
 - Update documentation, migration notes, and `CHANGELOG.md` when behavior or workflows change. Keep the document roles distinct: `README.md` is a short consumer quickstart, `docs/using-this-template.md` covers project setup, `docs/gitflow-and-branching.md` covers branching and promotion, `docs/versioning-and-changesets.md` covers releases, `docs/using-ai.md` covers AI tooling and its guardrails, and `CONTRIBUTING.md` is the only contributor-facing guide. State a fact once and link to it.
 - This is a real GitHub template repository, so "template" is accurate. Keep the two consumption paths distinct: **Use this template** produces no shared history; a **fork** retains history and a link back. This repository provides no automated upstream-sync mechanism for either path — never promise automatic flow-down.
