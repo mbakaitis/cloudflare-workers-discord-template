@@ -113,7 +113,7 @@ Smallest viable slice, each behavior landing with a failing test first:
 - Tests live at `test/register-commands.test.js` (vitest, alongside the other unit tests, not `test/contracts/`) since they test this script's own logic, not a repo-structure contract; they run fine under the existing `@cloudflare/vitest-pool-workers` setup because the pure functions and the `fetchImpl` injection point avoid any Node-only API.
 - Verified manually: running the compiled CLI directly (not through vitest) with no env vars, with `--guild` and no `DISCORD_GUILD_ID`, and with a mocked global `fetch` all behave as documented, confirming the `import.meta.url`-based main-module guard is not just a test artifact.
 
-### Stage 6 — Documentation overhaul
+### Stage 6 — Documentation overhaul — done
 *Addresses: goal 5, plus finishing the doc debt from Stages 0-5.*
 
 - `README.md`: quickstart reframed around "clone/use-this-template → set Discord app credentials → deploy → see your bot respond," not the generic Workers pitch.
@@ -121,6 +121,15 @@ Smallest viable slice, each behavior landing with a failing test first:
 - `docs/gitflow-and-branching.md` and `docs/versioning-and-changesets.md`: check for any generic-Worker-only language; likely need only light touch-ups since branching/release mechanics don't change.
 - `docs/using-ai.md`: update the "what is already set up" table and MCP guidance only if Stage 2's research changed what an assistant should look up (e.g. Discord API docs aren't served by the Cloudflare docs MCP server, so note where to look instead).
 - Cross-check every internal link and the README documentation table per `claude.md`'s "update every cross-reference" rule.
+
+**Decided/implemented:**
+
+- **`README.md`** rewritten: title and pitch now describe a Discord bot template (signature verification, interaction handling, command registration) instead of the generic Worker pitch. "What you get" lists `src/index.js`, `src/command-definitions.js`, and `scripts/register-commands.js` by name. The quickstart grew from 7 to 8 steps to insert "create a Discord application and fill in `.dev.vars`" and "register your test commands," and the final step now also covers setting the Interactions Endpoint URL. The everyday-commands table gained `register`/`register:guild`. `package.json`/`wrangler.jsonc` naming (still literally `cloudflare-workers-template`) was deliberately left alone — that rename is Stage 8's job, not this stage's.
+- **`docs/using-this-template.md` had a real gap, not just stale wording:** the per-environment secrets table and `.dev.vars` instructions already existed from Stage 3's work, but nothing walked through *creating* a Discord application or ever mentioned the **Interactions Endpoint URL** — a documented requirement in `claude.md`'s "Required project shape." Added two new sections: "Creating your Discord applications" (Developer Portal click-path: New Application, copy Application ID/Public Key, reset and copy the bot token) and "Setting the Interactions Endpoint URL" (why it must come *after* a deployment with `DISCORD_PUBLIC_KEY` already set — Discord verifies the URL with a live signed `PING` on save — and what an inline validation error there means). "Setup is complete when" gained a matching checklist line. No lingering upstream-sync material found (`grep -rni upstream` outside `CHANGELOG.md`/`project-approach.md`/the deliberate template-vs-fork distinction turned up nothing).
+- **`docs/gitflow-and-branching.md` and `docs/versioning-and-changesets.md`: no changes needed.** Read both in full; neither contains generic-Worker-only language that contradicts the Discord bot mission — branch/release mechanics are identical regardless of what the Worker does.
+- **`docs/using-ai.md`:** added one paragraph noting the Cloudflare Docs MCP server doesn't cover Discord's API and pointing at `discord.com/developers/docs` directly, matching `claude.md`'s existing instruction to look Discord platform behavior up separately.
+- **Link audit:** wrote a throwaway script to compute GitHub-style heading slugs for every doc touched by this stage (plus `CONTRIBUTING.md`) and checked every internal `[text](path#anchor)` link against it. Found and fixed one **pre-existing** broken anchor unrelated to this stage's new content: `README.md` linked `docs/using-this-template.md#choosing-how-to-start`, but the heading is `## 0. Choosing how to start`, which slugs to `0-choosing-how-to-start` (the leading `0.` doesn't vanish). All links added by this stage passed on the first check.
+- Documentation-only change: only `.md` files touched, so per `claude.md`'s documentation-only exemption, `npm test`/`npm run lint`/Wrangler validation were skipped in favor of the accuracy review above (commands, paths, and anchors verified to exist; no contradiction with the instruction files).
 
 ### Stage 7 — Live verification
 *Addresses: goal 6's "test the bot live on Discord."*

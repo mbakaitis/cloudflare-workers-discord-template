@@ -46,6 +46,8 @@ Both configuration files declare the same two servers in the two schemas that to
 
 **Neither file contains a token.** They hold only non-secret server URLs, which is why they are safe to commit. If a tool needs credentials, they belong in that tool's own local configuration.
 
+**The Cloudflare Docs MCP server does not cover Discord's API.** Signature verification, interaction types, command registration, and rate limits are Discord platform behavior, not Cloudflare's — look them up directly at [discord.com/developers/docs](https://discord.com/developers/docs) and record the link where the decision is documented (`claude.md` already does this for the choices made in this template). No MCP server is configured for Discord's documentation; there isn't an official one to point at.
+
 In VS Code, `.vscode/mcp.json` is the configuration to use. If you rely on another client's configuration instead, you may need to enable `chat.mcp.discovery.enabled`.
 
 ### Documentation lookup is not authorization

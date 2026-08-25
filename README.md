@@ -1,20 +1,22 @@
-# Cloudflare Workers Template
+# Cloudflare Workers Discord Bot Template
 
-A minimal, production-shaped starting point for a Cloudflare Worker: one small Worker, tests that run in the real Workers runtime, separate non-production and production environments, and a documented release path.
+A minimal, production-shaped starting point for a Discord bot on Cloudflare Workers: Ed25519 signature verification, interaction handling, and slash-command registration, tests that run in the real Workers runtime, separate non-production and production environments, and a documented release path.
 
-This is a GitHub template repository. Create your own project from it, then add your application code. Nothing here deploys to Cloudflare until you deliberately turn deployment on.
+This is a GitHub template repository. Create your own project from it, then add your bot's commands. Nothing here deploys to Cloudflare or registers commands with Discord until you deliberately turn those on.
 
 ## What you get
 
-- A minimal Worker in [src/index.js](src/index.js) with an explicit `fetch` handler.
-- Tests that execute in the Workers runtime locally through Miniflare, no Cloudflare account required.
+- A Discord bot Worker in [src/index.js](src/index.js): an explicit `fetch` handler that verifies every incoming interaction's Ed25519 signature, answers Discord's `PING` endpoint check, and dispatches slash commands.
+- A shared command-definitions module ([src/command-definitions.js](src/command-definitions.js)) that both the Worker and the registration script read, so a command Discord shows users can never drift from what the Worker actually handles.
+- A zero-dependency command-registration script ([scripts/register-commands.js](scripts/register-commands.js)) that bulk-overwrites your bot's slash commands against Discord's REST API, globally or scoped to a test server.
+- Tests that execute in the Workers runtime locally through Miniflare, no Cloudflare account or live Discord calls required.
 - Contract tests that fail if non-production and production configuration get crossed.
 - Separate `non-prod` and `production` Wrangler environments, with deployment disabled by default.
 - A documented branch, promotion, and release workflow.
 
 ## Quickstart
 
-1. **Create your repository.** Select **Use this template** on GitHub for a clean start, or **Fork** if you want to keep this repository's history and contribute improvements back. The two paths differ in ways worth understanding first — see [Choosing how to start](docs/using-this-template.md#choosing-how-to-start).
+1. **Create your repository.** Select **Use this template** on GitHub for a clean start, or **Fork** if you want to keep this repository's history and contribute improvements back. The two paths differ in ways worth understanding first — see [Choosing how to start](docs/using-this-template.md#0-choosing-how-to-start).
 
 2. **Clone it and install.** Clone the repository you just created, not this one.
 
@@ -26,28 +28,31 @@ This is a GitHub template repository. Create your own project from it, then add 
 
 3. **Name your Workers.** Change the three `name` fields in [wrangler.jsonc](wrangler.jsonc) from `cloudflare-workers-template` to your own project slug, keeping the `-non-prod` and `-production` suffixes. Update `name` in [package.json](package.json) to match.
 
-4. **Run it locally.** No Cloudflare account is needed.
+4. **Create a Discord application and fill in `.dev.vars`.** Create an application in the [Discord Developer Portal](https://discord.com/developers/applications) and copy `.dev.vars.example` to `.dev.vars` with its public key, application ID, and bot token. See [Configuring Discord secrets](docs/using-this-template.md#configuring-discord-secrets).
+
+5. **Run it locally and register your test commands.**
 
    ```sh
    npm run dev
+   npm run register:guild
    ```
 
-5. **Confirm the guardrails still pass.** The contract tests check that your two environments are distinct.
+6. **Confirm the guardrails still pass.** The contract tests check that your two environments are distinct.
 
    ```sh
    npm test
    ```
 
-6. **Create the `develop` branch.** Feature work merges into `develop`; releases go out from `main`.
+7. **Create the `develop` branch.** Feature work merges into `develop`; releases go out from `main`.
 
    ```sh
    git switch -c develop
    git push -u origin develop
    ```
 
-7. **Turn on deployment when you are ready.** Configure the Cloudflare secrets and protected GitHub environments, then set the `DEPLOY_ENABLED` Actions variable to `true`.
+8. **Turn on deployment when you are ready.** Configure the Cloudflare secrets and protected GitHub environments, set the `DEPLOY_ENABLED` Actions variable to `true`, then set each Discord application's Interactions Endpoint URL to its deployed Worker's URL.
 
-Steps 3, 6, and 7 have details that matter — bindings, secrets, branch protection, and environment isolation. Work through [Using this template](docs/using-this-template.md) before your first deployment.
+Steps 3, 4, 7, and 8 have details that matter — bindings, secrets, branch protection, environment isolation, and Discord application setup. Work through [Using this template](docs/using-this-template.md) before your first deployment.
 
 ## Everyday commands
 
@@ -58,6 +63,8 @@ Steps 3, 6, and 7 have details that matter — bindings, secrets, branch protect
 | `npm run test:watch` | Re-run unit tests as you edit |
 | `npm run lint` | Check JavaScript style |
 | `npm run lint:fix` | Apply safe automatic style fixes, then review the diff |
+| `npm run register` | Bulk-overwrite your bot's slash commands (global, or guild-scoped if `DISCORD_GUILD_ID` is set) |
+| `npm run register:guild` | Bulk-overwrite slash commands for one test server, for fast iteration |
 | `npm run changeset` | Record the release impact of a change |
 | `npm run deploy:non-prod` | Deploy the non-production Worker |
 | `npm run deploy:production` | Deploy the production Worker |
@@ -71,6 +78,8 @@ Local development uses the top-level Wrangler configuration and never deploys a 
 Merges to `develop` deploy the non-production Worker; merges to `main` deploy production after an environment approval gate. Both are skipped until the GitHub Actions repository **variable** `DEPLOY_ENABLED` is set to `true`. That flag is not a secret — it is only the explicit opt-in, which keeps this template and unconfigured projects from ever contacting Cloudflare. The Cloudflare API token and account ID remain GitHub secrets.
 
 You can also deploy from your machine with `npm run deploy:non-prod` or `npm run deploy:production`, but the reviewed GitHub Actions path is the intended route to production.
+
+Deploying a Worker is not the same as Discord recognizing it. After the first deploy of each environment, set that Discord application's Interactions Endpoint URL to the deployed Worker's URL — see [Setting the Interactions Endpoint URL](docs/using-this-template.md#setting-the-interactions-endpoint-url) — and run `npm run register` (or `register:guild`) so its slash commands exist.
 
 ## Documentation
 

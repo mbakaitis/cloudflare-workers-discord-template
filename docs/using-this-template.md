@@ -220,6 +220,18 @@ If your project makes the package public or wants npm publication, update the Ch
 
 Full details are in [Versioning and changesets](versioning-and-changesets.md).
 
+## Creating your Discord applications
+
+Before you can fill in any secrets, you need Discord applications to get credentials from. Repeat these steps twice — once for the non-prod/local application, once for production (see [Configuring Discord secrets](#configuring-discord-secrets) below):
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and click **New Application**.
+2. Name it something that identifies the environment, e.g. `acme-weather-api-non-prod` and `acme-weather-api-production`, and accept the terms.
+3. On the **General Information** page, copy the **Application ID** and the **Public Key**. Both are safe to see but still go in `.dev.vars` alongside the real secrets — see [Configuring Discord secrets](#configuring-discord-secrets).
+4. Open the **Bot** tab. Click **Reset Token** to reveal a bot token, then copy it immediately — Discord shows it only once. Treat this value as a real secret: it authenticates as your bot.
+5. Leave the **Interactions Endpoint URL** field on the General Information page blank for now. It requires a deployed, signature-verifying Worker to already exist before Discord will accept it — come back to it after your first deployment, in [Setting the Interactions Endpoint URL](#setting-the-interactions-endpoint-url).
+
+You do not need to configure OAuth2 scopes, bot permissions, or an installation link to develop against this template — a bot token and application ID are enough to register commands and receive interactions in a server you already control as an admin. Add an invite/installation flow yourself if your project needs one; it is application-specific, not part of this template.
+
 ## Configuring Discord secrets
 
 This Worker is a Discord bot, so it needs Discord's per-application credentials in addition to the Cloudflare setup above. Four values are involved, and only one of them (`DISCORD_TOKEN`) is genuinely sensitive — but all four live together, in the same place, at each tier, so there is exactly one spot to look for "the Discord config" rather than four:
@@ -258,6 +270,18 @@ npx wrangler secret put DISCORD_APPLICATION_ID --env production
 
 Use the non-prod/local application's values for `--env non-prod` and the production application's values for `--env production`. `DISCORD_TOKEN` and `DISCORD_GUILD_ID` are never set here — the registration script that uses them is a local/manual tool, not something the deployed Worker runs.
 
+## Setting the Interactions Endpoint URL
+
+Deploying the Worker does not tell Discord where to send interactions — that is a separate, per-environment step in the Discord Developer Portal, and it can only happen **after** the target environment is deployed with its `DISCORD_PUBLIC_KEY` secret already set.
+
+1. Deploy the environment you're configuring: `npm run deploy:non-prod` (or merge to `develop`), or `npm run deploy:production` (or merge to `main`).
+2. Get that Worker's URL — `https://<worker-name>.<your-subdomain>.workers.dev`, shown in the deploy output or the Cloudflare dashboard.
+3. In the matching Discord application's **General Information** page (the non-prod/local application for the non-prod Worker, the production application for the production Worker — see [Configuring Discord secrets](#configuring-discord-secrets)), paste that URL into **Interactions Endpoint URL** and save.
+
+The moment you save, Discord sends that URL a signed `PING` interaction and only keeps the URL if your Worker answers it correctly. This is why the order matters: if the Worker isn't deployed yet, or its `DISCORD_PUBLIC_KEY` secret doesn't match the application you're configuring, Discord shows an inline validation error and refuses to save the URL. If that happens, re-check `npx wrangler secret list --env <env>` for that environment and confirm you copied the Public Key from the correct application in step 3 of [Creating your Discord applications](#creating-your-discord-applications).
+
+Repeat this for both environments — the non-prod application points at the non-prod Worker's URL, the production application points at the production Worker's URL. Neither environment is registered with Discord, and neither can receive interactions, until this step is done for it.
+
 ## Registering slash commands
 
 Deploying the Worker does not register any commands with Discord — that is a separate step against Discord's REST API, run with `scripts/register-commands.js`. The script reads `src/command-definitions.js` (the same module the Worker dispatches against, so a command Discord shows users can never drift from what the Worker actually handles) and bulk-overwrites the target scope to match it exactly, creating, updating, and pruning commands in one call.
@@ -281,6 +305,7 @@ Global registration (`npm run register`) can take up to an hour to propagate acr
 - The `non-prod` and `production` GitHub environments have the correct branch restrictions, and `production` requires a reviewer.
 - Your three Worker names are distinct, and any bindings are environment-specific and intentional.
 - You have two Discord applications (non-prod/local and production), `.dev.vars` is filled in locally, and both environments have `DISCORD_PUBLIC_KEY`/`DISCORD_APPLICATION_ID` set via `wrangler secret put`.
+- Each environment has been deployed at least once, and its Discord application's Interactions Endpoint URL points at that deployment's URL without a validation error.
 - `npm run register` (or `npm run register:guild`) has been run at least once against your non-prod/local Discord application, so its command list matches `src/command-definitions.js`.
 - `npm test` passes, including the contract tests.
 - A merge to `develop` deploys non-production, and an approved merge to `main` deploys production.
