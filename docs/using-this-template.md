@@ -258,6 +258,22 @@ npx wrangler secret put DISCORD_APPLICATION_ID --env production
 
 Use the non-prod/local application's values for `--env non-prod` and the production application's values for `--env production`. `DISCORD_TOKEN` and `DISCORD_GUILD_ID` are never set here — the registration script that uses them is a local/manual tool, not something the deployed Worker runs.
 
+## Registering slash commands
+
+Deploying the Worker does not register any commands with Discord — that is a separate step against Discord's REST API, run with `scripts/register-commands.js`. The script reads `src/command-definitions.js` (the same module the Worker dispatches against, so a command Discord shows users can never drift from what the Worker actually handles) and bulk-overwrites the target scope to match it exactly, creating, updating, and pruning commands in one call.
+
+```sh
+npm run register        # global by default, or guild-scoped if DISCORD_GUILD_ID is set in .dev.vars
+npm run register:guild  # explicit guild-scoped registration; fails if DISCORD_GUILD_ID is unset
+```
+
+Run it:
+
+- **Once per Discord application**, after filling in `.dev.vars` for the first time, so your test server or global scope has the sample `/ping` command.
+- **Every time you add, rename, remove, or change a command** in `src/command-definitions.js` — the deployed Worker will handle the new definitions immediately, but Discord's command picker only reflects them after you re-run this script.
+
+Global registration (`npm run register`) can take up to an hour to propagate across Discord; guild-scoped registration (`npm run register:guild`, or setting `DISCORD_GUILD_ID` and running `npm run register`) applies instantly to that one server, which is why it is the faster loop during development. Register against your non-prod/local Discord application while iterating, and against the production application only when you are ready for real users to see the change.
+
 ## Setup is complete when
 
 - `main` and `develop` both exist on your remote.
@@ -265,6 +281,7 @@ Use the non-prod/local application's values for `--env non-prod` and the product
 - The `non-prod` and `production` GitHub environments have the correct branch restrictions, and `production` requires a reviewer.
 - Your three Worker names are distinct, and any bindings are environment-specific and intentional.
 - You have two Discord applications (non-prod/local and production), `.dev.vars` is filled in locally, and both environments have `DISCORD_PUBLIC_KEY`/`DISCORD_APPLICATION_ID` set via `wrangler secret put`.
+- `npm run register` (or `npm run register:guild`) has been run at least once against your non-prod/local Discord application, so its command list matches `src/command-definitions.js`.
 - `npm test` passes, including the contract tests.
 - A merge to `develop` deploys non-production, and an approved merge to `main` deploys production.
 

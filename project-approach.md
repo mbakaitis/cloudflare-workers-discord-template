@@ -38,6 +38,7 @@ Each stage is scoped to land as one reviewable PR, follows the repo's existing r
 - Keep everything that is genuinely still true unchanged: TDD mandate, no TypeScript, environment isolation, secrets discipline, documentation role table, versioning rules. Drop the "template repo" vs "fork" distinction insofar as it existed to explain upstream-sync eligibility — Stage 0 removes that mechanism, so there's no workflow left for the distinction to gate.
 - Replace what's now specific to the generic template: "smallest practical base Worker" becomes "smallest practical Discord bot Worker"; add Discord-specific required project shape (signature verification, interaction handling, command registration) alongside the existing Wrangler/environment requirements.
 - **Decided:** bumped the instruction contract version **2.0.0 → 2.1.0** (minor). It adds new required-shape items (signature verification, interaction handling, command registration) but doesn't rename a file, change a required command, or break an existing documented contract. Revisit at the end of Stage 5 in case a later stage's new required scripts force **major** instead.
+- **Revisited at the end of Stage 5:** no further bump. `register`/`register:guild` are new npm scripts, but `claude.md`'s "Environment and deployment rules" section already frames its script list as illustrative ("a typical contract"), and the "command-registration story (script or documented process)" requirement was already part of the 2.1.0 required project shape — Stage 5 fulfills it rather than introducing a new requirement. Same reasoning Stage 4 used for signature verification.
 - Validation: documentation-only change — no tests/lint required, but manually verify every command, path, and cross-reference named in the rewritten files still exists.
 
 ### Stage 2 — Decide and document the Discord app dependency surface
@@ -96,13 +97,21 @@ Smallest viable slice, each behavior landing with a failing test first:
 - Confirmed via current Cloudflare docs that the Web Crypto API's Ed25519 support needs no compatibility flag (works with this repo's `compatibility_date`), reaffirming Stage 2's zero-dependency decision.
 - **Instruction contract version:** not bumped. Stage 1 already added signature verification/interaction handling/command registration to `claude.md`'s required project shape at 2.1.0; Stage 4 fulfills that existing requirement rather than adding a new one.
 
-### Stage 5 — Command registration script and its own test/doc coverage
+### Stage 5 — Command registration script and its own test/doc coverage — done
 *Addresses: goal 3/6 follow-through.*
 
 - Implement `scripts/register-commands.js` per Stage 2's decision: zero dependencies, native `fetch`, imports the shared command-definitions module from Stage 4, reads `DISCORD_TOKEN`/`DISCORD_APPLICATION_ID`/optional `DISCORD_GUILD_ID` via `node --env-file=.dev.vars`, issues a `PUT` bulk-overwrite request (global by default, guild-scoped with `--guild` or when `DISCORD_GUILD_ID` is set).
 - Add the `register` and `register:guild` npm scripts (Stage 2), matching the existing script-contract style in `claude.md`.
 - Add a script-level test that doesn't hit the network (mock global `fetch` or test the payload-building/URL-selection logic in isolation).
 - Document how and when to run it (once per app, or per command change) in `docs/using-this-template.md` — the single-`.dev.vars` decision from Stage 3 is already documented there.
+
+**Decided/implemented:**
+
+- **Testable via dependency injection, not mocked module internals.** `buildRegistrationUrl`, `buildCommandPayload`, and `resolveGuildId` are pure named exports; `registerCommands({ applicationId, token, guildId, fetchImpl })` takes `fetchImpl` as an injectable parameter (defaulting to global `fetch`) rather than reading `process.env` or calling `fetch` directly, so `test/register-commands.test.js` covers the real request shape (method, headers, body) with a mocked `fetchImpl` — no network calls, no `.dev.vars` dependency in CI. `main()` is the only part that reads `process.env`/`process.argv`, and only runs when the file is executed directly (`fileURLToPath(import.meta.url) === process.argv[1]`), never on import, so importing the module for tests has no side effects.
+- **`--guild` without `DISCORD_GUILD_ID` is a hard error, not a silent fallback to global.** `resolveGuildId` throws if `guildFlag` is set but `discordGuildId` isn't, since a bulk-overwrite that lands globally when a developer meant guild-scoped is a worse failure mode than refusing to run.
+- **`fetch` and `console` added to `eslint.config.js`'s globals**, alongside the existing `process` — the registration script is the first source file in this repo to use either.
+- Tests live at `test/register-commands.test.js` (vitest, alongside the other unit tests, not `test/contracts/`) since they test this script's own logic, not a repo-structure contract; they run fine under the existing `@cloudflare/vitest-pool-workers` setup because the pure functions and the `fetchImpl` injection point avoid any Node-only API.
+- Verified manually: running the compiled CLI directly (not through vitest) with no env vars, with `--guild` and no `DISCORD_GUILD_ID`, and with a mocked global `fetch` all behave as documented, confirming the `import.meta.url`-based main-module guard is not just a test artifact.
 
 ### Stage 6 — Documentation overhaul
 *Addresses: goal 5, plus finishing the doc debt from Stages 0-5.*

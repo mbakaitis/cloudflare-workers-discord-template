@@ -18,6 +18,8 @@ export default [
         crypto: "readonly",
         TextEncoder: "readonly",
         process: "readonly",
+        fetch: "readonly",
+        console: "readonly",
       },
     },
     plugins: {
