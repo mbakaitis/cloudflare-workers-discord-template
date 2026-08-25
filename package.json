@@ -1,6 +1,6 @@
 {
   "name": "cloudflare-workers-template",
-  "version": "0.2.1",
+  "version": "1.0.0",
   "description": "Forkable boilerplate for Cloudflare Workers projects",
   "private": true,
   "keywords": [
