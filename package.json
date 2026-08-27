@@ -1,0 +1,46 @@
+{
+  "name": "cloudflare-workers-discord-template",
+  "version": "0.1.0",
+  "description": "Forkable boilerplate for a Discord bot running on Cloudflare Workers",
+  "private": true,
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "wrangler",
+    "discord",
+    "bot",
+    "template",
+    "boilerplate"
+  ],
+  "author": "Matt Bakaitis <matt@bakaitis.com>",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run && npm run test:contracts",
+    "test:contracts": "node --test test/contracts/*.test.js",
+    "test:watch": "vitest",
+    "changeset": "changeset",
+    "changeset:status": "changeset status",
+    "version": "changeset version",
+    "release": "changeset tag",
+    "register": "node --env-file=.dev.vars scripts/register-commands.js",
+    "register:guild": "node --env-file=.dev.vars scripts/register-commands.js --guild",
+    "deploy:non-prod": "wrangler deploy --env non-prod",
+    "deploy:production": "wrangler deploy --env production"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.1",
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@eslint/js": "^10.0.1",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "eslint": "^10.8.1",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.124.0"
+  }
+}

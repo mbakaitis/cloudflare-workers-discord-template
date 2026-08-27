@@ -1,0 +1,412 @@
+# Using This Template
+
+This guide takes you from "I want a new Worker" to "my project deploys to Cloudflare safely." Work through it once, when you create the project. For day-to-day work afterwards, use [Gitflow and branching](gitflow-and-branching.md) and [Versioning and changesets](versioning-and-changesets.md).
+
+It covers the things that files in your new repository cannot configure for you: repository ownership, branches, Cloudflare targets, GitHub Actions secrets, and repository rules.
+
+## 0. Choosing how to start
+
+There are three ways to get these files, and they are not interchangeable. The difference is what relationship your project keeps with this repository.
+
+| | Use this template | Fork | Clone only |
+| --- | --- | --- | --- |
+| Creates a GitHub repository for you | Yes | Yes | No |
+| Commit history | Fresh start, single initial commit | Full history of this repository | Full history, but no repository of your own |
+| Linked to this repository on GitHub | No | Yes, shown as "forked from" | No |
+| Can open pull requests back to this repository | Not easily | Yes | No |
+| Best for | Real projects | Contributing upstream | Evaluating the template |
+
+### Use this template (recommended for real projects)
+
+Select **Use this template > Create a new repository**, then choose the owner, name, and visibility. Your project starts with a clean history that belongs to you, with no "forked from" relationship and no inherited issues or pull requests.
+
+Two consequences to plan for:
+
+- GitHub copies only the default branch unless you check **Include all branches**. You will create `develop` yourself in step 3 either way, since this repository does not carry one.
+- Your repository shares **no commit history** with this one, and Git refuses to merge unrelated histories. This template provides no automated mechanism for adopting later upstream changes; if you want them, follow this template's `CHANGELOG.md` and apply the ones you want by hand.
+
+### Fork
+
+Select **Fork**, then choose the destination owner. Your project keeps this repository's full commit history and a live upstream link, so GitHub can compare the two.
+
+Trade-offs:
+
+- GitHub labels the repository as a fork, and a fork of a private repository stays private.
+- You get one fork per account for a given repository.
+- GitHub disables scheduled workflows in forks by default, which only matters if you add your own.
+
+Fork if you intend to send improvements back to this template, or if keeping the shared history for manual comparison (`git log`, `git diff`, `git cherry-pick` against this repository) is worth more to you than a clean history.
+
+### Clone only
+
+`git clone` copies the repository to your computer without creating anything on GitHub. Its `origin` remote still points at **this** repository, so you cannot push your work anywhere of your own, and pushing at all would target the template. Use this to read the code or run the tests before deciding.
+
+To turn a clone into a project later, create an empty repository on GitHub and repoint the remote:
+
+```sh
+git remote set-url origin https://github.com/YOUR-OWNER/YOUR-REPOSITORY.git
+git push -u origin main
+```
+
+This keeps the history but creates no fork link.
+
+## 1. Create and clone your repository
+
+Pick a path above and create the repository. The project name is yours; it does not have to resemble this template's name. For example, creating `acme-weather-api` under the organization `acme` gives you `github.com/acme/acme-weather-api`.
+
+Then clone **your** repository — not this one — and install dependencies:
+
+```sh
+git clone https://github.com/acme/acme-weather-api.git
+cd acme-weather-api
+npm install
+```
+
+Replace `acme/acme-weather-api` with what you actually created. The `cd` command enters the directory `git clone` created, so run it only after cloning.
+
+Keep the `.github/`, `docs/`, `src/`, `test/`, `package.json`, and `wrangler.jsonc` files unless your project has a deliberate alternative.
+
+## 2. Name your Workers
+
+This step assigns the Cloudflare Worker resource names for your project. These are not GitHub repository names, branch names, domains, or API tokens. A Worker name identifies a deployed Worker inside your Cloudflare account, so choose names that are unique and recognizable.
+
+| Wrangler field | Example value | Used for |
+| --- | --- | --- |
+| Top-level `name` | `acme-weather-api` | Local development; also used if someone runs `wrangler deploy` without `--env` |
+| `env.non-prod.name` | `acme-weather-api-non-prod` | The Worker deployed when `develop` changes |
+| `env.production.name` | `acme-weather-api-production` | The Worker deployed when `main` changes |
+
+The template ships with:
+
+```jsonc
+{
+  "name": "cloudflare-workers-discord-template",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-18",
+  "observability": {
+    "enabled": true
+  },
+  "env": {
+    "non-prod": {
+      "name": "cloudflare-workers-discord-template-non-prod"
+    },
+    "production": {
+      "name": "cloudflare-workers-discord-template-production"
+    }
+  }
+}
+```
+
+Change only the three `name` values:
+
+```jsonc
+{
+  "name": "acme-weather-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-18",
+  "observability": {
+    "enabled": true
+  },
+  "env": {
+    "non-prod": {
+      "name": "acme-weather-api-non-prod"
+    },
+    "production": {
+      "name": "acme-weather-api-production"
+    }
+  }
+}
+```
+
+Also update `name` in `package.json` so the package and the Worker agree. Confirm in the Cloudflare dashboard that these names are available and that the non-production and production names refer to separate Workers.
+
+Leave `compatibility_date` alone unless you have a reason to move it, and treat any change to it as a deliberate, documented decision. `observability.enabled` captures logs and telemetry for the deployed Worker; keep it on.
+
+Add bindings inside the matching environment only. A non-production D1 database belongs under `env.non-prod`; a production D1 database belongs under `env.production`. Never point non-production at production databases, buckets, queues, or other stateful resources. See [Adding environment-specific bindings](#adding-environment-specific-bindings).
+
+### Environment isolation is enforced
+
+Isolation is not just advice here — **contract tests** run as part of `npm test` and verify:
+
+- **Unique Worker names.** The top-level, `non-prod`, and `production` Workers must all have distinct names.
+- **Clear naming.** The `non-prod` name should contain `non-prod`, `staging`, or `dev`; the `production` name should contain `production` or `prod`.
+- **No production bindings at the top level.** D1 databases, R2 buckets, KV namespaces, and similar bindings must not sit in the top-level configuration.
+- **Environment structure.** The configuration must define separate `env.non-prod` and `env.production` sections.
+
+So if you give `env.non-prod` and `env.production` the same name, or attach a database at the top level, `npm test` fails before you can deploy. Verify locally with:
+
+```sh
+npm test
+npx wrangler deploy --dry-run --env non-prod
+npx wrangler deploy --dry-run --env production
+```
+
+The dry runs report what each environment would deploy and bind, without deploying anything.
+
+## 3. Create the Git branches
+
+The long-lived branches are `main` and `develop`. Initialize them from the same verified starting commit:
+
+```sh
+git switch main
+git push -u origin main
+git switch -c develop
+git push -u origin develop
+```
+
+If your repository starts on a different default branch, rename it to `main` first. Use `feature/<name>` for day-to-day work; `release/<name>` and `hotfix/<name>` are also permitted for short-lived coordination branches.
+
+## 4. Configure GitHub environments and secrets
+
+Deployment is disabled by default. This is what stops a brand-new project from attempting a Cloudflare deployment before a Worker, an account, and credentials exist.
+
+Create these GitHub Actions environments:
+
+- `non-prod`, restricted to the `develop` branch.
+- `production`, restricted to the `main` branch, with required reviewers enabled.
+
+Add these secrets at repository or environment scope:
+
+- `CLOUDFLARE_API_TOKEN` — a least-privilege token that can deploy your two Workers.
+- `CLOUDFLARE_ACCOUNT_ID` — the Cloudflare account containing them.
+
+Then, and only then, enable deployment. `DEPLOY_ENABLED` is deliberately a repository **variable**, not a secret: it holds no sensitive value and exists purely as the explicit opt-in. Add it with the value `true` under **Settings > Secrets and variables > Actions > Variables**. Until it exists, the deploy job is skipped and no Cloudflare credentials are used.
+
+Never commit these values or put them in `.dev.vars` or generated files.
+
+## 5. Configure branch protection
+
+This template does not ship a ruleset file to import. An imported JSON payload can save with fewer rules than it declares — plan tier, organization policy, and repository visibility all affect what GitHub accepts — so a committed file that looks authoritative can silently stop matching what's actually enforced. Configure the settings by hand instead, and verify what actually saved.
+
+Go to **Settings > Rules > Rulesets > New branch ruleset** (classic **Settings > Branches** protection rules work too) and apply this to both `main` and `develop`:
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Enforcement status | Active | "Evaluate" or "Disabled" protects nothing |
+| Restrict deletions | On | The branch can't be deleted |
+| Block force pushes | On | History can't be rewritten |
+| Require a pull request before merging | On | No direct pushes |
+| ↳ Required approvals | 1 | Minimum review gate |
+| ↳ Dismiss stale approvals on push | On | A new commit needs a fresh look |
+| ↳ Require conversation resolution | On | Open review threads can't be merged around |
+| Require status checks to pass | On | CI must be green |
+| ↳ Status check | `test` | Matches the job name in `.github/workflows/ci.yml` |
+| ↳ Require branches to be up to date before merging | On | No merging around a stale base |
+
+Do not add a `branch_name_pattern` rule. See [Gitflow and branching](gitflow-and-branching.md#branches-and-what-they-deploy) for why: it requires GitHub Team or Enterprise and is rejected outright on Free and Pro. Branch naming stays enforced through code review.
+
+After saving, confirm it actually took effect — `gh api repos/OWNER/REPOSITORY/rulesets` — and check that the ruleset's `enforcement` is `"active"` and its `rules` array contains everything in the table above. Re-check after any change to organization policy or plan.
+
+## 6. Verify the deployment path
+
+Prove the whole path works before you rely on it. Create a small feature branch and open a pull request into `develop`:
+
+```sh
+git switch -c feature/verify-gitflow
+npm run dev
+npm test
+git push -u origin feature/verify-gitflow
+```
+
+After merging into `develop`, check the non-production Worker. Then open a pull request from `develop` into `main`; after the production environment approval, check the production Worker.
+
+The deploy workflow never runs for feature branches. Local work uses `npm run dev`; only merges to `develop` and `main` deploy.
+
+## 7. Releases
+
+Changesets is already configured. Keep the `.changeset/` directory and `.github/workflows/release.yml`. For a change that affects your project's contract, run `npm run changeset`, choose the SemVer increment, and commit the generated file with your pull request. Merging to `main` opens a release pull request; merging that versions the package and creates a tag. It does not publish to npm.
+
+If your project makes the package public or wants npm publication, update the Changesets `access` and `privatePackages` settings, add registry authentication through CI secrets, and review the workflow before enabling publication. Do not put registry credentials in the repository.
+
+Full details are in [Versioning and changesets](versioning-and-changesets.md).
+
+## Creating your Discord applications
+
+Before you can fill in any secrets, you need Discord applications to get credentials from. Repeat these steps twice — once for the non-prod/local application, once for production (see [Configuring Discord secrets](#configuring-discord-secrets) below):
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and click **New Application**.
+2. Name it something that identifies the environment, e.g. `acme-weather-api-non-prod` and `acme-weather-api-production`, and accept the terms.
+3. On the **General Information** page, copy the **Application ID** and the **Public Key**. Both are safe to see but still go in `.dev.vars` alongside the real secrets — see [Configuring Discord secrets](#configuring-discord-secrets).
+4. Open the **Bot** tab. Click **Reset Token** to reveal a bot token, then copy it immediately — Discord shows it only once. Treat this value as a real secret: it authenticates as your bot.
+5. Leave the **Interactions Endpoint URL** field on the General Information page blank for now. It requires a deployed, signature-verifying Worker to already exist before Discord will accept it — come back to it after your first deployment, in [Setting the Interactions Endpoint URL](#setting-the-interactions-endpoint-url).
+
+You do not need to configure OAuth2 scopes, bot permissions, or an installation link to develop against this template — a bot token and application ID are enough to register commands and receive interactions in a server you already control as an admin. Add an invite/installation flow yourself if your project needs one; it is application-specific, not part of this template.
+
+## Configuring Discord secrets
+
+This Worker is a Discord bot, so it needs Discord's per-application credentials in addition to the Cloudflare setup above. Four values are involved, and only one of them (`DISCORD_TOKEN`) is genuinely sensitive — but all four live together, in the same place, at each tier, so there is exactly one spot to look for "the Discord config" rather than four:
+
+| Name | Used by | Notes |
+| --- | --- | --- |
+| `DISCORD_PUBLIC_KEY` | Deployed Worker, local `wrangler dev` | Verifies Discord's Ed25519 request signatures. Public by design — safe to see, but stored the same way as the rest of this table for one consistent, easy-to-document setup step. |
+| `DISCORD_APPLICATION_ID` | Deployed Worker, local `wrangler dev`, registration script | Identifies your Discord application. Also public (it appears in invite URLs). |
+| `DISCORD_TOKEN` | Registration script only | Your bot token. The one real secret here — never used by the deployed Worker, never committed. |
+| `DISCORD_GUILD_ID` | Registration script only, optional | A test server's ID, for guild-scoped command registration (`npm run register:guild`) during development. |
+
+**Per-environment Discord applications.** Create **two** Discord applications in the [Discord Developer Portal](https://discord.com/developers/applications), mirroring the non-prod/production split you already used for Worker names in step 2:
+
+- One application shared by local development and the `non-prod` Worker.
+- One application dedicated to the `production` Worker.
+
+This mirrors the existing rule that production resources are never silently reused by local or staging work (see [Environment isolation is enforced](#environment-isolation-is-enforced)) — applied to *which bot's credentials* as much as to Cloudflare resources. A leaked or misregistered non-prod token then can't touch the commands or the token real users' interactions rely on.
+
+**Local development.** Copy `.dev.vars.example` to `.dev.vars` and fill in the values from your non-prod/local Discord application:
+
+```sh
+cp .dev.vars.example .dev.vars
+```
+
+`.dev.vars` is gitignored and never committed. `wrangler dev` reads `DISCORD_PUBLIC_KEY` and `DISCORD_APPLICATION_ID` from it automatically; the registration script reads all four values from the same file via `node --env-file=.dev.vars` (see `npm run register` / `npm run register:guild`). One file, one place to fill in, for everything this bot needs to run and register commands locally.
+
+**Deployed environments.** The deployed Worker never reads `.dev.vars` — set its two values per environment with Wrangler:
+
+```sh
+npx wrangler secret put DISCORD_PUBLIC_KEY --env non-prod
+npx wrangler secret put DISCORD_APPLICATION_ID --env non-prod
+
+npx wrangler secret put DISCORD_PUBLIC_KEY --env production
+npx wrangler secret put DISCORD_APPLICATION_ID --env production
+```
+
+Use the non-prod/local application's values for `--env non-prod` and the production application's values for `--env production`. `DISCORD_TOKEN` and `DISCORD_GUILD_ID` are never set here — the registration script that uses them is a local/manual tool, not something the deployed Worker runs.
+
+## Setting the Interactions Endpoint URL
+
+Deploying the Worker does not tell Discord where to send interactions — that is a separate, per-environment step in the Discord Developer Portal, and it can only happen **after** the target environment is deployed with its `DISCORD_PUBLIC_KEY` secret already set.
+
+1. Deploy the environment you're configuring: `npm run deploy:non-prod` (or merge to `develop`), or `npm run deploy:production` (or merge to `main`).
+2. Get that Worker's URL — `https://<worker-name>.<your-subdomain>.workers.dev`, shown in the deploy output or the Cloudflare dashboard.
+3. In the matching Discord application's **General Information** page (the non-prod/local application for the non-prod Worker, the production application for the production Worker — see [Configuring Discord secrets](#configuring-discord-secrets)), paste that URL into **Interactions Endpoint URL** and save.
+
+The moment you save, Discord sends that URL a signed `PING` interaction and only keeps the URL if your Worker answers it correctly. This is why the order matters: if the Worker isn't deployed yet, or its `DISCORD_PUBLIC_KEY` secret doesn't match the application you're configuring, Discord shows an inline validation error and refuses to save the URL. If that happens, re-check `npx wrangler secret list --env <env>` for that environment and confirm you copied the Public Key from the correct application in step 3 of [Creating your Discord applications](#creating-your-discord-applications).
+
+Repeat this for both environments — the non-prod application points at the non-prod Worker's URL, the production application points at the production Worker's URL. Neither environment is registered with Discord, and neither can receive interactions, until this step is done for it.
+
+## Registering slash commands
+
+Deploying the Worker does not register any commands with Discord — that is a separate step against Discord's REST API, run with `scripts/register-commands.js`. The script reads `src/command-definitions.js` (the same module the Worker dispatches against, so a command Discord shows users can never drift from what the Worker actually handles) and bulk-overwrites the target scope to match it exactly, creating, updating, and pruning commands in one call.
+
+```sh
+npm run register        # global by default, or guild-scoped if DISCORD_GUILD_ID is set in .dev.vars
+npm run register:guild  # explicit guild-scoped registration; fails if DISCORD_GUILD_ID is unset
+```
+
+Run it:
+
+- **Once per Discord application**, after filling in `.dev.vars` for the first time, so your test server or global scope has the sample `/ping` command.
+- **Every time you add, rename, remove, or change a command** in `src/command-definitions.js` — the deployed Worker will handle the new definitions immediately, but Discord's command picker only reflects them after you re-run this script.
+
+Global registration (`npm run register`) can take up to an hour to propagate across Discord; guild-scoped registration (`npm run register:guild`, or setting `DISCORD_GUILD_ID` and running `npm run register`) applies instantly to that one server, which is why it is the faster loop during development. Register against your non-prod/local Discord application while iterating, and against the production application only when you are ready for real users to see the change.
+
+## Setup is complete when
+
+- `main` and `develop` both exist on your remote.
+- Branch rules prevent direct changes to `main` and `develop`.
+- The `non-prod` and `production` GitHub environments have the correct branch restrictions, and `production` requires a reviewer.
+- Your three Worker names are distinct, and any bindings are environment-specific and intentional.
+- You have two Discord applications (non-prod/local and production), `.dev.vars` is filled in locally, and both environments have `DISCORD_PUBLIC_KEY`/`DISCORD_APPLICATION_ID` set via `wrangler secret put`.
+- Each environment has been deployed at least once, and its Discord application's Interactions Endpoint URL points at that deployment's URL without a validation error.
+- `npm run register` (or `npm run register:guild`) has been run at least once against your non-prod/local Discord application, so its command list matches `src/command-definitions.js`.
+- `npm test` passes, including the contract tests.
+- A merge to `develop` deploys non-production, and an approved merge to `main` deploys production.
+
+## Adding environment-specific bindings
+
+As your project grows you will add Cloudflare resources — D1 databases, R2 buckets, KV namespaces, Queues, Durable Objects. One rule governs all of them: **a binding goes in the environment it serves, never at the top level.**
+
+### The rule
+
+All bindings, regardless of service type, belong inside `env.non-prod` or `env.production`. The contract tests verify this automatically.
+
+When adding a resource:
+
+1. Create it in your Cloudflare account.
+2. Add it to the matching `env` section in `wrangler.jsonc`.
+3. Give it a distinct, environment-aware name, such as `my-api-non-prod` versus `my-api-production`.
+
+**Incorrect** — a binding at the top level, which fails the contract tests:
+
+```jsonc
+{
+  "name": "my-worker",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_id": "abc123"
+    }
+  ]
+}
+```
+
+**Correct** — environment sections ready for bindings:
+
+```jsonc
+{
+  "name": "my-worker",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-18",
+  "env": {
+    "non-prod": {
+      "name": "my-worker-non-prod"
+      // Service bindings go here (d1_databases, r2_buckets, kv_namespaces, etc.)
+    },
+    "production": {
+      "name": "my-worker-production"
+      // Service bindings go here (d1_databases, r2_buckets, kv_namespaces, etc.)
+    }
+  }
+}
+```
+
+**Correct** — the same binding name pointing at separate resources per environment:
+
+```jsonc
+{
+  "name": "my-worker",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-18",
+  "env": {
+    "non-prod": {
+      "name": "my-worker-non-prod",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_id": "abc123-non-prod"
+        }
+      ]
+    },
+    "production": {
+      "name": "my-worker-production",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_id": "def456-production"
+        }
+      ]
+    }
+  }
+}
+```
+
+Your Worker code reads `env.DB` in both cases; only the underlying resource differs. Document each binding you add with JSDoc in `src/index.js` — this project is plain JavaScript and deliberately does not generate TypeScript binding types. If you want editor autocomplete for bindings in your own project, `npx wrangler types` will generate them on demand, but nothing here requires it.
+
+### Validating a binding change
+
+1. **Run the contract tests** to catch structural mistakes:
+
+   ```sh
+   npm test
+   ```
+
+2. **Dry-run both environments** before merging:
+
+   ```sh
+   npx wrangler deploy --dry-run --env non-prod
+   npx wrangler deploy --dry-run --env production
+   ```
+
+   Confirm each environment binds the resources you expect.
+
+3. **Review in the pull request** to catch logical mistakes: resource IDs genuinely distinct between environments, no cross-environment references, consistent naming.
+
+Never copy a resource ID from production into non-production or the reverse. The contract tests catch structural mistakes; naming discipline and human review catch logical ones.
