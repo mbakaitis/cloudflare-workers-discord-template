@@ -1,4 +1,4 @@
-# Cloudflare Workers Template
+# Cloudflare Workers Discord Template
 
 A minimal, production-shaped starting point for a Cloudflare Worker: one working placeholder Worker, tests that run locally in a real Workers runtime, separate non-production and production environments, and a documented release path.
 
@@ -34,7 +34,7 @@ This is a GitHub template repository. Create your own project from it, then add 
 
 3. **Name your Workers.** 
 
-   Change the three `name` fields in [wrangler.jsonc](wrangler.jsonc) from `cloudflare-workers-template` to your own project slug, keeping the `-non-prod` and `-production` suffixes. Update `name` in [package.json](package.json) to match.
+   Change the three `name` fields in [wrangler.jsonc](wrangler.jsonc) from `cloudflare-workers-discord-template` to your own project slug, keeping the `-non-prod` and `-production` suffixes. Update `name` in [package.json](package.json) to match.
 
 4. **Run it locally.** 
 

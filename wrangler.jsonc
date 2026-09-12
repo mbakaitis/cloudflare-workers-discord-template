@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "cloudflare-workers-template",
+  "name": "cloudflare-workers-discord-template",
   "main": "src/index.js",
   "compatibility_date": "2026-08-18",
   "observability": {
@@ -8,10 +8,10 @@
   },
   "env": {
     "non-prod": {
-      "name": "cloudflare-workers-template-non-prod"
+      "name": "cloudflare-workers-discord-template-non-prod"
     },
     "production": {
-      "name": "cloudflare-workers-template-production"
+      "name": "cloudflare-workers-discord-template-production"
     }
   }
 }

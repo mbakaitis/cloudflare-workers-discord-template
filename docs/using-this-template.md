@@ -78,7 +78,7 @@ The template ships with:
 
 ```jsonc
 {
-  "name": "cloudflare-workers-template",
+  "name": "cloudflare-workers-discord-template",
   "main": "src/index.js",
   "compatibility_date": "2026-08-18",
   "observability": {
@@ -86,10 +86,10 @@ The template ships with:
   },
   "env": {
     "non-prod": {
-      "name": "cloudflare-workers-template-non-prod"
+      "name": "cloudflare-workers-discord-template-non-prod"
     },
     "production": {
-      "name": "cloudflare-workers-template-production"
+      "name": "cloudflare-workers-discord-template-production"
     }
   }
 }
@@ -248,7 +248,7 @@ Full details are in [Versioning and changesets](versioning-and-changesets.md).
 Nothing merges upstream changes into your repository automatically, regardless of which path you chose in [Choosing how to start](#0-choosing-how-to-start). Adopt them deliberately instead. Add this repository as a second remote once:
 
 ```sh
-git remote add upstream https://github.com/mbakaitis/workers.git
+git remote add upstream https://github.com/mbakaitis/cloudflare-workers-discord-template.git
 git fetch upstream
 ```
 

@@ -1,6 +1,6 @@
 # Cloudflare Workers Project Guide
 
-This file guides AI coding tools working in this repository. It started as `claude-for-users.md` in the `cloudflare-workers-template` starter kit and was renamed to `claude.md` when this project was set up — see [Using This Template](docs/using-this-template.md) if that step hasn't happened yet.
+This file guides AI coding tools working in this repository. It started as `claude-for-users.md` in the `cloudflare-workers-discord-template` starter kit and was renamed to `claude.md` when this project was set up — see [Using This Template](docs/using-this-template.md) if that step hasn't happened yet.
 
 Unlike the template it came from, this file describes *your application*, not a boilerplate meant for many future projects. There is no instruction-contract version to track and no upstream file to stay in sync with — edit it freely as your project's needs change.
 
