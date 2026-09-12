@@ -1,12 +1,14 @@
-# Cloudflare Workers Template Maintainer Guide
+# Cloudflare Workers Discord Bot Template Maintainer Guide
 
-**Instruction contract version:** 2.1.0
+**Instruction contract version:** 3.0.0
 
-This repository is the versioned boilerplate for Cloudflare Workers. It must remain useful when copied into a new Worker project and must make future Cloudflare, Wrangler, and platform changes deliberate, testable, and documented.
+This repository is the versioned boilerplate for a Discord bot on Cloudflare Workers. Its default application serves Discord HTTP interactions from a Worker and registers its own slash commands, so a new project starts from something that already works end to end. It must remain useful when copied into a new Worker project and must make future Cloudflare, Wrangler, Discord, and platform changes deliberate, testable, and documented.
+
+> **Transitional note — remove before release.** This contract was raised to 3.0.0 ahead of the code it governs, deliberately: the specification moves first so the implementation has something to comply with rather than being blessed retroactively. Until the command work described in [the refactor plan](docs/discord-template-edits.md) finishes, this repository does not yet satisfy the Discord requirements below. That window stays inside the current feature-branch series and nothing is released mid-way. Delete this note once the shape is satisfied.
 
 ## Mission and scope
 
-- Keep the smallest practical base Worker that developers can install with Wrangler and extend.
+- Keep the smallest practical Discord bot that developers can install with Wrangler and extend: an interactions endpoint, a command registry, and a registration path — and no more. The bot is a worked example of the platform's shape, not a feature-complete framework.
 - Treat this repository as a product: preserve a clear upgrade path, stable defaults, and a changelog.
 - Prefer Cloudflare's current official documentation and supported Wrangler behavior over assumptions or stale examples.
 - Keep template concerns separate from application-specific business logic. A template change should be easy to identify and safely adopt.
@@ -18,6 +20,7 @@ This repository is the versioned boilerplate for Cloudflare Workers. It must rem
 - When a change here affects what a downstream application should also do — TDD, environment isolation, secrets handling, treating MCP results as research rather than authorization — mirror it into the matching `-for-users` file in the same change. When a change is specific to maintaining *this* template (mission and scope, downstream alignment, the instruction contract version itself), it does not belong in the `-for-users` files.
 - Keep the instruction contract version in this file and its adapter files aligned. Use Semantic Versioning: patch for clarifications, minor for compatible requirements, and major for breaking instruction changes.
 - Before changing platform configuration, consult current Cloudflare documentation for Workers, Wrangler, environments, compatibility dates, bindings, secrets, deployments, and testing. When available, use the configured Cloudflare documentation MCP server in `.mcp.json` or `.vscode/mcp.json` for this lookup.
+- Before changing interaction handling, command definitions, or registration, confirm the current requirements against Discord's official developer documentation and cite what you find. Discord's interaction contract — required headers, response types, acknowledgement windows, and the bulk-overwrite semantics of registration — is not stable enough to work from recall. Use Discord's documentation MCP server for this lookup when it is configured.
 - Treat MCP results as documentation research, not as authorization to change accounts, deploy code, create resources, or handle secrets. Verify important platform claims against the current official documentation and record the relevant documentation link or decision in repository docs when it affects the template contract.
 - Keep `.mcp.json` and `.vscode/mcp.json` limited to non-secret server configuration. `.mcp.json` uses the Claude-compatible `mcpServers` schema; `.vscode/mcp.json` uses VS Code's `servers` schema. Keep `.claude/settings.local.json` local and permission-scoped; never add credentials or broaden MCP permissions merely to make a task convenient.
 - Record important decisions and breaking changes in repository documentation. Do not rely on an issue, chat message, or implicit knowledge.
@@ -29,7 +32,7 @@ This repository is the versioned boilerplate for Cloudflare Workers. It must rem
 
 The implementation should normally include, or document why it does not include:
 
-- A minimal Worker entry point with an explicit `fetch` handler and a small health/basic response.
+- A minimal Worker entry point with an explicit `fetch` handler, a small health/basic response, and the Discord interactions route described below.
 - JavaScript source using ES modules with mandatory JSDoc. Document exported functions, Worker handlers, configuration contracts, and non-obvious behavior so developers and AI tools can understand the code without reconstructing intent. Do not introduce TypeScript as a project requirement.
 - Wrangler configuration in the current supported format, with an explicit `compatibility_date` and Cloudflare best practices enabled:
   - **Observability enabled**: The `observability.enabled` setting captures logs and telemetry for monitoring and debugging.
@@ -45,6 +48,16 @@ The implementation should normally include, or document why it does not include:
 
 Do not add a service, binding, dependency, or deployment target merely because it may be useful later. Every addition needs a documented purpose, ownership, local-development story, test strategy, and rollback or removal path.
 
+### Discord requirements
+
+These are contract, not convention. Each one exists because getting it wrong is either a security failure or a silent divergence between what the Worker serves and what Discord thinks exists.
+
+- **Mandatory signature verification.** The interactions endpoint performs Ed25519 signature verification on every request and returns `401` when verification fails. There is no bypass, no development flag that disables it, and no code path that parses a body before verifying the signature that covers it — the signature is over the raw bytes, so reading the raw body must come first. Discord validates this when an Interactions Endpoint URL is saved, and an unverified endpoint is an open door for forged interactions.
+- **Command definitions are data, shared by one source.** Command definitions live as plain data that both the Worker and the registration script import. Neither may carry its own copy, because two copies drift and the failure is invisible: Discord advertises a command the Worker does not handle, or the Worker handles one Discord never registered. A definition module must stay importable from plain Node — no `cloudflare:workers` imports — so the registration script can read the same definitions the Worker dispatches.
+- **One Discord application per environment.** Non-production and production use separate Discord applications, each with its own public key, application ID, and bot token. A non-production Worker never holds production Discord credentials. This is the same isolation rule the template already applies to Cloudflare environments, extended to Discord: `DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`, and `DISCORD_TOKEN` are per-environment secrets, supplied through Cloudflare's secret mechanisms or CI secret storage and never committed.
+- **Never log interaction payloads or credentials.** Do not log interaction payloads, interaction tokens, or bot tokens — not in error handlers, not behind a debug flag, not in a test fixture that gets committed. Interaction payloads carry user content and an interaction token is a short-lived credential that can post as the bot. Observability is enabled in this template, so a log line is a durable record, not a transient console write.
+- **Registration is part of the contract.** The command registration script and its npm scripts are template-owned surface, covered by the same expectations as the Worker: unit-tested logic, a documented dry-run path that contacts nothing, and no credential in output including error paths. Changing or removing them is a contract change requiring migration notes.
+
 ## Environment and deployment rules
 
 Use the repository's package scripts as the stable interface for contributors. A typical contract is:
@@ -52,8 +65,10 @@ Use the repository's package scripts as the stable interface for contributors. A
 - `npm run dev`: run the Worker locally with Wrangler.
 - `npm run lint`: run JavaScript lint checks.
 - `npm test`: run the unit test suite.
-- `npm run deploy:staging`: deploy only the named non-production environment.
+- `npm run deploy:non-prod`: deploy only the named non-production environment.
 - `npm run deploy:production`: deploy only production, with an explicit confirmation or CI protection where practical.
+- `npm run register:non-prod` and `npm run register:production`: register the command definitions with the environment's own Discord application, guild-scoped for non-production and global for production.
+- `npm run register:dry-run`: print the registration plan — target URL, redacted headers, and body — without contacting Discord.
 
 The exact scripts may change, but their intent must remain documented. Before merging deployment changes:
 
@@ -62,6 +77,7 @@ The exact scripts may change, but their intent must remain documented. Before me
 3. Confirm secrets are supplied through Cloudflare's secret mechanisms or CI secret storage, never committed to source or `.env` files.
 4. Confirm the compatibility date and any compatibility flags are intentional and documented.
 5. Confirm a rollback or previous-version procedure exists.
+6. Confirm each environment targets its own Discord application, and that no non-production path can register commands against, or authenticate as, the production application. Note that redeploying an older Worker does not roll back a command registration — the two roll back independently.
 
 For CI/CD, prefer immutable, reviewable deployments from the protected default branch. Pin or constrain action and tool versions where practical, and keep Wrangler's version aligned with the supported Cloudflare workflow. Avoid deploying from a developer laptop as the only production path.
 
@@ -74,6 +90,7 @@ For CI/CD, prefer immutable, reviewable deployments from the protected default b
 - Add a regression test for every bug fixed in the template.
 - Test configuration and scripts enough to catch accidental environment drift, especially staging/production target mix-ups.
 - Keep tests deterministic: no live production calls, shared mutable state, wall-clock dependence, or undeclared credentials.
+- Test the Discord surface offline. Sign interaction fixtures with a test-only Ed25519 key so signature verification is genuinely exercised rather than stubbed, inject the Discord REST client so no test reaches the network, and take test credentials from the test-pool `env` — never from a real Discord application. Assert that deferred follow-ups actually happened, not merely that they were scheduled.
 - Run the narrowest relevant test first, then the full required checks before merging.
 
 At minimum, changes should pass unit tests, JavaScript linting, formatting if configured, and a Wrangler/configuration validation step. CI should run the same checks developers are instructed to run locally.
