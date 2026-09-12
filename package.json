@@ -1,14 +1,17 @@
 {
-  "name": "cloudflare-workers-template",
-  "version": "1.0.0",
-  "description": "Boilerplate template for Cloudflare Workers projects",
+  "name": "cloudflare-workers-discord-template",
+  "version": "0.1.0",
+  "description": "Boilerplate template for a Discord bot on Cloudflare Workers",
   "private": true,
   "keywords": [
     "cloudflare",
     "workers",
     "wrangler",
     "template",
-    "boilerplate"
+    "boilerplate",
+    "discord",
+    "discord-bot",
+    "slash-commands"
   ],
   "author": "Matt Bakaitis <matt@bakaitis.com>",
   "license": "MIT",

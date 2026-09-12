@@ -21,8 +21,8 @@ The full maintenance contract is [claude.md](claude.md). This document is the pr
 No Cloudflare account is required to contribute. The whole test suite runs locally.
 
 ```sh
-git clone https://github.com/mbakaitis/workers.git
-cd workers
+git clone https://github.com/mbakaitis/cloudflare-workers-discord-template.git
+cd cloudflare-workers-discord-template
 npm install
 npm test
 ```
