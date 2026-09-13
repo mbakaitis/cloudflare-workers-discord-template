@@ -19,6 +19,7 @@ const context = {
   env: { DISCORD_APPLICATION_ID: "test-application" },
   ctx: { waitUntil: () => {} },
   rest: { editOriginalResponse: () => {} },
+  sleep: () => Promise.resolve(),
 };
 
 describe("interaction dispatch", () => {
@@ -52,6 +53,10 @@ describe("interaction dispatch", () => {
     expect(calls[0].handlerContext.env).toBe(context.env);
     expect(calls[0].handlerContext.ctx).toBe(context.ctx);
     expect(calls[0].handlerContext.rest).toBe(context.rest);
+    // Ambient capabilities are injected for the same reason `rest` is: a
+    // handler that reaches for a timer itself stops being testable as a
+    // function, and `/slow` needs one.
+    expect(calls[0].handlerContext.sleep).toBe(context.sleep);
   });
 
   it("replies ephemerally when the named command is not in the registry", async () => {

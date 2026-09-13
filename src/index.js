@@ -10,11 +10,14 @@ import { commands } from "./commands/index.js";
 import { createRest } from "./discord/rest.js";
 import { verifyInteractionRequest } from "./discord/verify.js";
 import { dispatchInteraction } from "./interactions.js";
+import { sleep } from "./runtime.js";
 
 /**
  * The Discord REST client the dispatcher hands to command handlers, bound to
  * the runtime's `fetch`. Tests build their own instead, which is why no module
- * below this one reaches for `fetch` itself.
+ * below this one reaches for `fetch` itself. The same applies to `sleep`, the
+ * runtime's timer: this file is the only place ambient capabilities are bound,
+ * and everything below it receives them as arguments.
  */
 const rest = createRest(fetch);
 
@@ -55,7 +58,7 @@ const handleInteraction = async (request, env, ctx) => {
     return new Response("invalid interaction payload", { status: 400 });
   }
 
-  return dispatchInteraction(interaction, { env, ctx, registry: commands, rest });
+  return dispatchInteraction(interaction, { env, ctx, registry: commands, rest, sleep });
 };
 
 export default {

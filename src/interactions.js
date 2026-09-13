@@ -2,11 +2,11 @@
  * The dispatcher: one pure function from a verified interaction to a Response.
  *
  * Everything it needs arrives as an argument — bindings, the execution context,
- * the command registry, the Discord REST client. That is not decoration. It is
- * what lets a test dispatch any interaction against a registry it made up and a
- * REST client that records instead of calling, with no Worker to start and no
- * network to reach, and it is what keeps the coverage ratchet reachable as
- * commands are added.
+ * the command registry, the Discord REST client, the runtime's timer. That is
+ * not decoration. It is what lets a test dispatch any interaction against a
+ * registry it made up, a REST client that records instead of calling, and a
+ * timer that never waits — with no Worker to start and no network to reach —
+ * and it is what keeps the coverage ratchet reachable as commands are added.
  *
  * Nothing here logs. Interaction payloads carry user content and an interaction
  * token can post as the bot, so neither one is written anywhere.
@@ -54,9 +54,11 @@ const UNKNOWN_COMMAND_MESSAGE =
  * @param {import("./commands/index.js").Command[]} context.registry Commands
  *   available to this dispatch.
  * @param {{ editOriginalResponse: Function }} context.rest Discord REST client.
+ * @param {(milliseconds: number) => Promise<void>} [context.sleep] The
+ *   runtime's timer, passed through to handlers that defer.
  * @returns {Promise<Response>}
  */
-export const dispatchInteraction = async (interaction, { env, ctx, registry, rest }) => {
+export const dispatchInteraction = async (interaction, { env, ctx, registry, rest, sleep }) => {
   if (interaction.type === InteractionType.PING) {
     return pong();
   }
@@ -68,7 +70,7 @@ export const dispatchInteraction = async (interaction, { env, ctx, registry, res
       return ephemeral(UNKNOWN_COMMAND_MESSAGE);
     }
 
-    return command.handler(interaction, { env, ctx, rest });
+    return command.handler(interaction, { env, ctx, rest, sleep });
   }
 
   // Components, modals, and autocomplete are out of scope for this template.

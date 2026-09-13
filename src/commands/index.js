@@ -15,6 +15,7 @@
  */
 import * as echo from "./echo.js";
 import * as ping from "./ping.js";
+import * as slow from "./slow.js";
 
 /**
  * A Discord application command definition, as sent to Discord's
@@ -44,6 +45,9 @@ import * as ping from "./ping.js";
  *   `waitUntil`.
  * @property {{ editOriginalResponse: Function }} rest Discord REST client from
  *   `src/discord/rest.js`.
+ * @property {(milliseconds: number) => Promise<void>} sleep The runtime's
+ *   timer, from `src/runtime.js`. Injected for the same reason `rest` is: a
+ *   handler that reaches for a timer itself cannot be tested without waiting.
  */
 
 /**
@@ -64,10 +68,11 @@ import * as ping from "./ping.js";
  * array, so there is no third place to update and no way for the two to
  * disagree. `docs/discord-bot.md` walks through it.
  *
- * The two commands here are worked examples, not features. A downstream project
- * is expected to delete them once it has its own — `/ping` shows an immediate
- * reply, `/echo` shows reading and validating an option.
+ * The three commands here are worked examples, not features. A downstream
+ * project is expected to delete them once it has its own — `/ping` shows an
+ * immediate reply, `/echo` shows reading and validating an option, and `/slow`
+ * shows deferring work that outlasts Discord's acknowledgement window.
  *
  * @type {Command[]}
  */
-export const commands = [ping, echo];
+export const commands = [ping, echo, slow];
