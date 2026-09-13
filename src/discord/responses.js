@@ -56,13 +56,24 @@ export const pong = () => json({ type: InteractionResponseType.PONG });
 /**
  * Reply immediately with a message everyone in the channel can see.
  *
+ * Interaction responses parse user mentions by default, so pass
+ * `suppressMentions` whenever the content came from a user. `allowed_mentions:
+ * { parse: [] }` allows none of them.
+ *
+ * @see https://docs.discord.com/developers/resources/message#allowed-mentions-object
  * @param {string} content Message content.
+ * @param {object} [options]
+ * @param {boolean} [options.suppressMentions] Send the content without letting
+ *   it notify anyone.
  * @returns {Response}
  */
-export const reply = (content) =>
+export const reply = (content, { suppressMentions = false } = {}) =>
   json({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-    data: { content },
+    data: {
+      content,
+      ...(suppressMentions ? { allowed_mentions: { parse: [] } } : {}),
+    },
   });
 
 /**

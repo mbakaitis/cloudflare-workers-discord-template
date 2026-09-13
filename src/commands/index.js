@@ -13,6 +13,8 @@
  * everything it needs — bindings, the execution context, the Discord REST
  * client — as arguments instead. `test/contracts/commands.test.js` enforces it.
  */
+import * as echo from "./echo.js";
+import * as ping from "./ping.js";
 
 /**
  * A Discord application command definition, as sent to Discord's
@@ -22,6 +24,14 @@
  * @typedef {object} CommandDefinition
  * @property {string} name Lowercase command name, as typed after the slash.
  * @property {string} description Shown in Discord's command picker.
+ * @property {number} type One of `ApplicationCommandType`. Declared rather than
+ *   defaulted; see `ping.js`.
+ * @property {number[]} integration_types Installation contexts the command
+ *   supports, from `ApplicationIntegrationType`.
+ * @property {number[]} contexts Where the command can be used, from
+ *   `InteractionContextType`.
+ * @property {object[]} [options] Command parameters. Required options must be
+ *   listed before optional ones.
  */
 
 /**
@@ -48,11 +58,16 @@
 /**
  * Every command this bot serves.
  *
- * Ships empty: a template that guesses at commands makes a downstream project
- * delete things before it can add its own. Append a `Command` here and the
- * Worker dispatches it and `npm run register:*` registers it, with no third
- * place to update.
+ * Add a command by creating `src/commands/<name>.js` exporting `definition` and
+ * `handler`, then adding it to this list. That is the only wiring: the Worker
+ * dispatches from this array and `npm run register:*` registers from the same
+ * array, so there is no third place to update and no way for the two to
+ * disagree. `docs/discord-bot.md` walks through it.
+ *
+ * The two commands here are worked examples, not features. A downstream project
+ * is expected to delete them once it has its own — `/ping` shows an immediate
+ * reply, `/echo` shows reading and validating an option.
  *
  * @type {Command[]}
  */
-export const commands = [];
+export const commands = [ping, echo];
