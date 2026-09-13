@@ -16,6 +16,7 @@ export default [
         // Vitest Workers pool. Declared here rather than silenced at each use
         // site with an inline disable comment.
         crypto: "readonly",
+        fetch: "readonly",
         Request: "readonly",
         Response: "readonly",
         TextEncoder: "readonly",
