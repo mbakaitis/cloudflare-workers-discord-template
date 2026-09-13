@@ -12,9 +12,10 @@ Two ideas drive the design:
 | Piece | Where | What it does |
 | --- | --- | --- |
 | Instruction files | `claude.md`, `AGENTS.md`, `.github/copilot-instructions.md` (and their `-for-users` counterparts) | Tell an assistant how to work in this repository |
-| Documentation MCP server | `.mcp.json`, `.vscode/mcp.json` | Lets an assistant read current Cloudflare documentation instead of guessing |
+| Documentation MCP servers | `.mcp.json`, `.vscode/mcp.json` | Let an assistant read current Cloudflare and Discord documentation instead of guessing |
 | GitHub MCP server | `.mcp.json`, `.vscode/mcp.json` | Lets an assistant read issues and repository data you already have access to |
 | Contract tests | `test/contracts/` | Fail the build when a change breaks an environment or workflow promise |
+| Coverage ratchet | `vitest.config.js` | Fails the build when new code lands untested |
 | Human gates | `DEPLOY_ENABLED`, protected environments, required review | Keep deployment and production out of reach of automation |
 
 ## The instruction files
@@ -49,10 +50,13 @@ From there, the files describe your project and your project alone. Edit them as
 
 ## MCP servers
 
-Both configuration files declare the same two servers in the two schemas that tools expect. `.mcp.json` uses the Claude-compatible `mcpServers` key; `.vscode/mcp.json` uses VS Code's `servers` key. A contract test asserts both stay in agreement.
+Both configuration files declare the same three servers in the two schemas that tools expect. `.mcp.json` uses the Claude-compatible `mcpServers` key; `.vscode/mcp.json` uses VS Code's `servers` key. A contract test asserts both stay in agreement.
 
 - **Cloudflare Docs** (`https://docs.mcp.cloudflare.com/mcp`) — current Workers and Wrangler documentation. This matters more than it sounds: Cloudflare's platform moves quickly, and a model's training data will confidently describe Wrangler behavior that changed a year ago. Looking it up beats remembering it.
+- **Discord Docs** (`https://docs.discord.com/mcp`) — Discord's own read-only documentation server, for the interaction contract this bot implements: required signature headers, response types, acknowledgement windows, and the bulk-overwrite semantics of command registration. Those details are exactly the kind a model recalls plausibly and wrongly, and getting the signature part wrong is a security bug rather than a broken feature.
 - **GitHub** (`https://api.githubcopilot.com/mcp/`) — issues and repository data. Your editor prompts you to authenticate on first use.
+
+The two documentation servers need no authentication. GitHub does, and it stays unavailable until you complete that prompt — an assistant cannot authorize itself.
 
 **Neither file contains a token.** They hold only non-secret server URLs, which is why they are safe to commit. If a tool needs credentials, they belong in that tool's own local configuration.
 
@@ -75,8 +79,13 @@ Instruction files are advisory. These are not.
 - Deployment must stay behind the explicit `DEPLOY_ENABLED` opt-in.
 - The release workflow must keep its reviewed shape.
 - One Node.js version, declared in one place.
+- The coverage thresholds must exist and must be above zero.
 
 This is the layer that makes AI assistance safe here. An assistant that suggests pointing non-production at a production database does not produce a subtle bug for a reviewer to catch six weeks later — it produces a failing test, immediately, before anything is deployed. When a contract test fails, that is the system working.
+
+**The coverage ratchet** turns "please write tests" from a request into a build failure. `npm test` measures coverage over `src/` and `scripts/lib/` and fails when it falls below the thresholds in `vitest.config.js`. Untested code cannot land, whoever wrote it.
+
+It only moves one way. Raising a threshold is a hand-edit in a reviewed diff; lowering one to make a change pass is the thing the ratchet exists to prevent. If you ask an assistant for a feature and it comes back having relaxed a threshold, that is the finding, not the fix — and the contract test above means deleting the thresholds outright fails too.
 
 **Human gates** cover what tests cannot. Deployment is off until you set `DEPLOY_ENABLED`, production requires environment approval, protected branches require review, and Cloudflare credentials live in GitHub secrets that no local tool can read. Automation can open a pull request; it cannot ship to production.
 

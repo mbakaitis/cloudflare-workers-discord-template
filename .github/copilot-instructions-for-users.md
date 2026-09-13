@@ -14,6 +14,7 @@ This is a Discord bot running on a Cloudflare Worker. Keep environment boundarie
 - Use the Cloudflare documentation MCP server configured in `.mcp.json` or `.vscode/mcp.json` for current platform research when available; fall back to official Cloudflare documentation if MCP is unavailable. Confirm Discord interaction, command, and registration behavior against Discord's official documentation.
 - Keep credentials and secret values out of source, `.env` files, `.dev.vars`, and generated artifacts.
 - Use mandatory red-green-refactor TDD for behavior changes; maintain unit and regression tests, including deterministic tests for configuration-sensitive behavior. Keep Discord tests offline: sign fixtures with a test-only Ed25519 key, inject the REST client, and assert that deferred follow-ups actually happened.
+- Treat the `istanbul` coverage thresholds in `vitest.config.js` as a one-way ratchet: raise them by hand when a change measures higher, never lower one to make a change pass, and do not enable `thresholds.autoUpdate`.
 - Run focused tests first, then lint/format and Wrangler/configuration validation as available. Documentation-only changes that touch Markdown files alone need none of these; verify referenced commands, paths, and links instead and report the skip.
 - Keep CI aligned with the documented local checks and protect production deployment.
 - Update the README and any relevant docs when behavior or workflow changes.

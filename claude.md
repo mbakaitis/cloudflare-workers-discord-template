@@ -88,6 +88,7 @@ For CI/CD, prefer immutable, reviewable deployments from the protected default b
 - Keep pure logic easy to test without a network, Cloudflare account, or deployed Worker.
 - Test the Worker handler through the runtime-compatible test utilities used by the project, including success, malformed input, expected error responses, and relevant binding behavior.
 - Add a regression test for every bug fixed in the template.
+- Treat the coverage thresholds in `vitest.config.js` as a ratchet over `src/` and `scripts/lib/`. Raise them by hand in the same change that measures higher, so the new number is reviewed; never lower one to make a change pass, and do not enable `coverage.thresholds.autoUpdate`. When new code cannot reach the current level, the answer is a test or an injectable dependency, not a smaller number. The provider must stay `istanbul` — V8 coverage does not work in the Workers pool.
 - Test configuration and scripts enough to catch accidental environment drift, especially staging/production target mix-ups.
 - Keep tests deterministic: no live production calls, shared mutable state, wall-clock dependence, or undeclared credentials.
 - Test the Discord surface offline. Sign interaction fixtures with a test-only Ed25519 key so signature verification is genuinely exercised rather than stubbed, inject the Discord REST client so no test reaches the network, and take test credentials from the test-pool `env` — never from a real Discord application. Assert that deferred follow-ups actually happened, not merely that they were scheduled.

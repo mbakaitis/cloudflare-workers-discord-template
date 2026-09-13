@@ -1,6 +1,12 @@
 # Discord Template Refactor Plan
 
-**Status:** planned, not started. This is a working planning artifact, not part of the consumer documentation set described in [claude.md](../claude.md) — it records the agreed scope for converting this repository from a generic Cloudflare Workers template into a Discord bot template. Delete it once the work has landed and `CHANGELOG.md` carries the history.
+**Status:** Phase 0 and Phase 1 complete; Phase 2 is next. This is a working planning artifact, not part of the consumer documentation set described in [claude.md](../claude.md) — it records the agreed scope for converting this repository from a generic Cloudflare Workers template into a Discord bot template. Delete it once the work has landed and `CHANGELOG.md` carries the history.
+
+### Resolved during implementation
+
+- **Coverage baseline is 100%** on statements, branches, functions, and lines — `src/index.js` is one handler with one test, so the ratchet starts at the ceiling. Istanbul works in the Workers pool as expected. Every later phase must therefore land fully covered rather than raising a number; the "raise the thresholds each phase" step is a no-op unless a phase measures *lower*, which is the failure the ratchet exists to catch.
+- **`secrets.required` is supported** by the pinned Wrangler (4.131.1), at the top level and per environment, so Phase 5 can use it. One correction to the planning assumption: the schema describes it as replacing `.dev.vars`/`.env` inference for type generation and enabling *local dev validation with warnings* for missing secrets — it is not documented as a deploy-time hard failure. Treat it as declaration and local warning, and do not describe it in the docs as a deploy gate.
+- **The `sharp`/libheif advisory in the test tooling is accepted, not fixed.** It arrives through `@cloudflare/vitest-pool-workers` → `miniflare` → `sharp`, all devDependencies, none bundled into the deployed Worker, and no current release of the Cloudflare test tooling resolves it. `npm audit fix --force` downgrades the pool below the `cloudflareTest` plugin API this repository uses. Do not re-open this in a later phase.
 
 ## Context
 
