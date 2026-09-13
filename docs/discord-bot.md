@@ -41,8 +41,11 @@ Interaction types this template does not serve — components, modals, autocompl
 | `src/discord/verify.js` | Ed25519 signature verification. Returns the raw body only when the signature checks out. |
 | `src/discord/responses.js` | Builders for every interaction response — `pong()`, `reply()`, `ephemeral()`, `deferred()` — each setting the JSON content type Discord requires. |
 | `src/discord/rest.js` | The outbound half: editing the original response to an interaction, for work that finishes after the acknowledgement. Takes `fetch` as an argument. |
+| `src/discord/command-types.js` | Constants for the shape of a command definition — command type, option types, installation and interaction contexts. |
 | `src/interactions.js` | The dispatcher. Pure: interaction in, `Response` out. |
 | `src/commands/index.js` | The command registry. One list, read by both the Worker and the registration script. |
+| `src/commands/ping.js` | `/ping` — worked example: an immediate reply. |
+| `src/commands/echo.js` | `/echo` — worked example: reading and validating an option. |
 
 ### Two rules the layout depends on
 
@@ -51,6 +54,68 @@ Interaction types this template does not serve — components, modals, autocompl
 **The registry stays importable from plain Node.** Nothing under `src/commands/` may import a `cloudflare:` module, because the command registration script runs under plain Node and imports the same file. This is the reason the definitions are data and handlers take their dependencies as arguments. `test/contracts/commands.test.js` enforces it, from outside the Workers pool.
 
 That single registry is the point: two copies of a command definition drift, and the failure is invisible from either side. Discord advertises a command the Worker does not handle, or the Worker handles one Discord never registered.
+
+## The commands that ship
+
+Two, and both are examples rather than features. Delete them once you have your own — they are here to be copied from, not kept.
+
+| Command | Shows |
+| --- | --- |
+| `/ping` | The shortest complete command: a definition, a handler, one reply. |
+| `/echo <message>` | Reading an option out of the interaction, and treating it as untrusted input. |
+
+## Adding a command
+
+Three steps, and the third is not optional.
+
+**1. Create `src/commands/<name>.js`** exporting `definition` and `handler`. Keep them in the same file — they are two halves of one thing, and separating them is how a bot ends up advertising a command nobody implemented.
+
+```js
+import { ApplicationCommandType, ApplicationIntegrationType, InteractionContextType }
+  from "../discord/command-types.js";
+import { reply } from "../discord/responses.js";
+
+export const definition = {
+  name: "ping",
+  description: "Check that the bot is responding.",
+  type: ApplicationCommandType.CHAT_INPUT,
+  integration_types: [ApplicationIntegrationType.GUILD_INSTALL],
+  contexts: [InteractionContextType.GUILD, InteractionContextType.BOT_DM],
+};
+
+export const handler = () => reply("Pong!");
+```
+
+A handler receives `(interaction, { env, ctx, rest })` and returns a `Response` — or a promise of one. Everything it needs is in that second argument; reach for an import and the command stops being testable as a function.
+
+**2. Add it to the registry** in `src/commands/index.js`:
+
+```js
+import * as ping from "./ping.js";
+
+export const commands = [ping];
+```
+
+That is the only wiring. The Worker dispatches from this array and `npm run register:*` registers from the same array.
+
+**3. Write the test.** `test/commands/<name>.test.js`, dispatching through `dispatchInteraction` against the real registry — not a registry the test invented. A command is only working when it is *in the registry* and its handler answers, and a test that supplies its own registry passes even when the command was never registered:
+
+```js
+const response = await dispatchInteraction(
+  { type: 2, data: { name: "ping" } },
+  { env: {}, ctx: { waitUntil: () => {} }, rest: {}, registry: commands },
+);
+```
+
+`test/commands/registry.test.js` then checks your definition against Discord's rules — naming, description length, declared contexts, option ordering — without you extending it. Those failures land at `npm test` rather than as a generic `400` from the registration endpoint after a deploy.
+
+### Habits worth copying
+
+**Declare `type`, `integration_types`, and `contexts` explicitly.** All three have Discord-side defaults. Declaring them makes where a command can be used a property of this repository, reviewable in a diff, instead of a consequence of how the Discord application happens to be configured. Note that Discord applies `integration_types` and `contexts` only to globally-scoped commands; a guild-scoped registration is already confined to its guild.
+
+**Do not trust an option, even a required one.** Discord enforces `required`, but a handler that assumes so throws on the first payload that disagrees — and a thrown handler is a failed interaction, which shows the user Discord's generic error notice and explains nothing. `/echo` reads its option defensively and answers a missing or blank one with an ephemeral message. Options arrive as an array of `{ name, type, value }`, so reading one is a lookup, not a property access.
+
+**Suppress mentions in anything a user typed.** `/echo` replies through `reply(content, { suppressMentions: true })`, which sets `allowed_mentions: { parse: [] }`. Interaction responses parse user mentions by default, so sending raw user input back means the bot can ping somebody on a stranger's behalf. Pass `suppressMentions` whenever the content came from a user.
 
 ## Testing the bot offline
 
@@ -66,3 +131,6 @@ Run `npm test` for the full suite with coverage, or `npx vitest run test/interac
 
 - [Receiving and responding to interactions](https://docs.discord.com/developers/interactions/receiving-and-responding) — interaction types, response types, and the follow-up endpoints
 - [Validating security headers](https://docs.discord.com/developers/interactions/overview#validating-security-headers) — the signature scheme `src/discord/verify.js` implements
+- [Application commands](https://docs.discord.com/developers/interactions/application-commands#application-command-object-application-command-structure) — the definition object, the naming rules, and the option structure
+- [Contexts](https://docs.discord.com/developers/interactions/application-commands#contexts) — what `integration_types` and `contexts` control
+- [Allowed mentions](https://docs.discord.com/developers/resources/message#allowed-mentions-object) — which mentions an interaction response parses by default

@@ -26,6 +26,17 @@ describe("interaction responses", () => {
     });
   });
 
+  it("replies without parsing mentions when asked", async () => {
+    // Interaction responses parse user mentions by default, so any helper that
+    // sends content a user supplied needs a way to turn that off.
+    const response = reply("hi <@123>", { suppressMentions: true });
+
+    expect(await response.json()).toEqual({
+      type: 4,
+      data: { content: "hi <@123>", allowed_mentions: { parse: [] } },
+    });
+  });
+
   it("replies with a message only the caller can see", async () => {
     const response = ephemeral("just for you");
 
