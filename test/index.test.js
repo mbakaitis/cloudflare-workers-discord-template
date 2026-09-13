@@ -74,11 +74,25 @@ describe("POST /interactions", () => {
     expect(response.status).toBe(400);
   });
 
+  it("dispatches a signed command interaction", async () => {
+    // The template's registry ships empty, so the end-to-end path through
+    // verification and dispatch lands on the unknown-command reply. It is still
+    // a 200: the user gets told something rather than seeing Discord's generic
+    // failure notice.
+    const response = await exports.default.fetch(
+      await signedInteraction({ type: 2, data: { name: "nothing-registered" } }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect((await response.json()).data.content).toMatch(/unknown command/i);
+  });
+
   it("rejects a signed interaction of a type it does not handle", async () => {
-    // Until the dispatcher exists, PING is the only type this Worker serves.
-    // An unhandled type gets a deliberate response rather than falling through
-    // to a runtime error.
-    const response = await exports.default.fetch(await signedInteraction({ type: 2 }));
+    // Type 3 is MESSAGE_COMPONENT. Components are out of scope for this
+    // template, so an unhandled type gets a deliberate response rather than
+    // falling through to a runtime error.
+    const response = await exports.default.fetch(await signedInteraction({ type: 3 }));
 
     expect(response.status).toBe(400);
   });

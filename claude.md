@@ -125,6 +125,7 @@ Update documentation in the same change when behavior or workflow changes. Docum
 | --- | --- |
 | `README.md` | Consumers: what the template is, quickstart, prerequisites, commands, and links onward. Keep it short and task-oriented; move detail into `docs/`. |
 | `docs/using-this-template.md` | Consumers: one-time project setup — how to start (GitHub template vs. clone), Worker naming, environment isolation, bindings, secrets, repository rules, upstream adoption. |
+| `docs/discord-bot.md` | Consumers: how the bot works — the interaction lifecycle (verify, PING/PONG, dispatch), the module layout, the injection seams, and how the Discord surface is tested offline. |
 | `docs/gitflow-and-branching.md` | Consumers: branches, pull requests, promotion, deployment gating, and rollback. |
 | `docs/versioning-and-changesets.md` | Consumers: recording changesets, the release pull request, cutting versions and tags. |
 | `docs/using-ai.md` | Consumers: how AI tooling is wired in — instruction files, MCP servers, the contract-test and human-gate guardrails, and how to adapt the instruction files downstream. |
