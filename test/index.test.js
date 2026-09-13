@@ -75,10 +75,11 @@ describe("POST /interactions", () => {
   });
 
   it("dispatches a signed command interaction", async () => {
-    // The template's registry ships empty, so the end-to-end path through
-    // verification and dispatch lands on the unknown-command reply. It is still
-    // a 200: the user gets told something rather than seeing Discord's generic
-    // failure notice.
+    // A name no command in the registry answers to, so the end-to-end path
+    // through verification and dispatch lands on the unknown-command reply. It
+    // is still a 200: the user gets told something rather than seeing Discord's
+    // generic failure notice. Naming an unregistered command keeps this test
+    // about routing rather than about whichever commands happen to ship.
     const response = await exports.default.fetch(
       await signedInteraction({ type: 2, data: { name: "nothing-registered" } }),
     );

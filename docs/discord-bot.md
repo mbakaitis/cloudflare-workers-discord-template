@@ -42,14 +42,18 @@ Interaction types this template does not serve — components, modals, autocompl
 | `src/discord/responses.js` | Builders for every interaction response — `pong()`, `reply()`, `ephemeral()`, `deferred()` — each setting the JSON content type Discord requires. |
 | `src/discord/rest.js` | The outbound half: editing the original response to an interaction, for work that finishes after the acknowledgement. Takes `fetch` as an argument. |
 | `src/discord/command-types.js` | Constants for the shape of a command definition — command type, option types, installation and interaction contexts. |
+| `src/runtime.js` | Ambient runtime capabilities bound at the entry point — currently just `sleep`, the template's only timer. |
 | `src/interactions.js` | The dispatcher. Pure: interaction in, `Response` out. |
 | `src/commands/index.js` | The command registry. One list, read by both the Worker and the registration script. |
 | `src/commands/ping.js` | `/ping` — worked example: an immediate reply. |
 | `src/commands/echo.js` | `/echo` — worked example: reading and validating an option. |
+| `src/commands/slow.js` | `/slow` — worked example: deferring, then editing the response from `waitUntil`. |
 
 ### Two rules the layout depends on
 
-**The dispatcher is injected, not wired.** `dispatchInteraction(interaction, { env, ctx, registry, rest })` receives its bindings, execution context, command registry, and REST client as arguments. So a test dispatches any interaction against a registry it invented and a REST client that records calls instead of making them — no Worker to start, no network to reach, and no reason for a command's tests to be slower or less precise than a pure function's.
+**The dispatcher is injected, not wired.** `dispatchInteraction(interaction, { env, ctx, registry, rest, sleep })` receives its bindings, execution context, command registry, REST client, and timer as arguments. So a test dispatches any interaction against a registry it invented, a REST client that records calls instead of making them, and a timer that never waits — no Worker to start, no network to reach, and no reason for a command's tests to be slower or less precise than a pure function's.
+
+`src/index.js` is the only file that binds an ambient capability: `createRest(fetch)` and `sleep` from `src/runtime.js`. Anything a handler cannot be handed is something its tests cannot control, so add capabilities there and pass them down rather than importing a global inside a command.
 
 **The registry stays importable from plain Node.** Nothing under `src/commands/` may import a `cloudflare:` module, because the command registration script runs under plain Node and imports the same file. This is the reason the definitions are data and handlers take their dependencies as arguments. `test/contracts/commands.test.js` enforces it, from outside the Workers pool.
 
@@ -57,12 +61,13 @@ That single registry is the point: two copies of a command definition drift, and
 
 ## The commands that ship
 
-Two, and both are examples rather than features. Delete them once you have your own — they are here to be copied from, not kept.
+Three, and all of them are examples rather than features. Delete them once you have your own — they are here to be copied from, not kept.
 
 | Command | Shows |
 | --- | --- |
 | `/ping` | The shortest complete command: a definition, a handler, one reply. |
 | `/echo <message>` | Reading an option out of the interaction, and treating it as untrusted input. |
+| `/slow` | Deferring: acknowledging inside Discord's window, then editing the response from `waitUntil`. |
 
 ## Adding a command
 
@@ -115,7 +120,46 @@ const response = await dispatchInteraction(
 
 **Do not trust an option, even a required one.** Discord enforces `required`, but a handler that assumes so throws on the first payload that disagrees — and a thrown handler is a failed interaction, which shows the user Discord's generic error notice and explains nothing. `/echo` reads its option defensively and answers a missing or blank one with an ephemeral message. Options arrive as an array of `{ name, type, value }`, so reading one is a lookup, not a property access.
 
+**Take a timer, a clock, or a network call as an argument.** A handler receives `sleep` for the same reason it receives `rest`: `/slow` needs to wait, and a handler that imports its own timer is a handler whose tests have to wait too. `/slow`'s tests inject a `sleep` they hold open and release by hand, so they assert ordering — acknowledged first, edited later — instead of racing it.
+
 **Suppress mentions in anything a user typed.** `/echo` replies through `reply(content, { suppressMentions: true })`, which sets `allowed_mentions: { parse: [] }`. Interaction responses parse user mentions by default, so sending raw user input back means the bot can ping somebody on a stranger's behalf. Pass `suppressMentions` whenever the content came from a user.
+
+## Deferring slow work
+
+Discord requires an initial response within **3 seconds** of sending the interaction, and it invalidates the interaction token if one does not arrive. The token itself is then valid for **15 minutes**, so the way to serve work that will not finish in 3 seconds is to acknowledge inside the window and send the real answer afterwards. `/slow` in `src/commands/slow.js` is the worked example.
+
+### When to defer
+
+Defer when you cannot promise the work beats the window. That is a promise about the worst case, not the average: a call that usually takes 200 ms and occasionally takes 5 seconds needs to defer, because the slow case is the one that breaks and it breaks invisibly. Anything crossing the network — a database, an upstream API, an inference call — belongs in that category. `/ping` and `/echo` do not: they compute their answer from the payload and answer on the interaction request itself.
+
+There is no cost to deferring beyond the loading state the user sees, and no way to recover from not deferring.
+
+### How it works
+
+```js
+export const handler = (interaction, { env, ctx, rest, sleep }) => {
+  ctx.waitUntil(followUp(interaction, { env, rest, sleep }));
+
+  return deferred();
+};
+```
+
+1. **Acknowledge.** `deferred()` returns `DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE` (type `5`). Discord shows the user a loading state.
+2. **Schedule the rest on `ctx.waitUntil`.** Cloudflare cancels asynchronous work that is neither awaited nor handed to `waitUntil` once the response goes out, so without it the follow-up dies mid-flight and the loading state never resolves. `waitUntil` keeps the invocation alive for up to 30 seconds after the response — well inside the token's 15 minutes, but the reason work longer than that belongs in a [Queue](https://developers.cloudflare.com/queues/) rather than here.
+3. **Edit the original response.** `rest.editOriginalResponse()` sends `PATCH /webhooks/{application.id}/{interaction.token}/messages/@original`, which replaces the loading state with the real message. This needs `env.DISCORD_APPLICATION_ID` and the interaction's own token.
+
+Pass `ctx` around as an object. Destructuring `waitUntil` off it loses its binding and throws `Illegal invocation` at runtime.
+
+The acknowledgement fixes the message's visibility: `deferred({ ephemeral: true })` makes the eventual message ephemeral, and the follow-up edit cannot change that either way. Decide at step 1.
+
+### When the follow-up fails
+
+`/slow` handles its two failures differently, deliberately:
+
+- **The work throws.** There is still a live token and a user watching a spinner, so the edit goes out anyway carrying a short failure message. Leaving the loading state to time out tells the user nothing.
+- **The edit throws.** It is swallowed. The only channel to the user is the call that just failed, and a rejection left unhandled inside `waitUntil` fails the invocation *after* a successful response was already sent — recording a Worker error nobody can act on while the user sees a command that worked.
+
+Neither path logs. An interaction payload carries user content and an interaction token can post as the bot; observability is enabled on this Worker, so a log line is a durable record of both. `src/discord/rest.js` throws an error carrying the HTTP status and nothing else, which is the safe thing to surface if you add monitoring here.
 
 ## Testing the bot offline
 
@@ -124,12 +168,17 @@ The whole suite runs with no network, no Cloudflare account, and no Discord appl
 - **Signatures are real.** `vitest.config.js` generates a throwaway Ed25519 keypair per test run, gives the Worker the public half through the test pool's bindings, and lets `test/helpers/interactions.js` sign fixtures with the private half. Verification runs real cryptography against a real signature — stubbing it would assert nothing, and this is the one security-critical behavior in the template.
 - **Discord is never called.** `src/discord/rest.js` takes `fetch` as an argument and the dispatcher takes `rest` as an argument, so tests inject a fake that records calls.
 - **No test holds a real credential.** Test keys come from the test-pool `env`, generated for that run.
+- **Nothing waits.** The only timer in the template is `src/runtime.js`, tested directly at zero milliseconds. Every command test injects its own.
+- **Deferred work is asserted, not assumed.** `test/commands/slow.test.js` uses `createExecutionContext()` and `waitOnExecutionContext()` from `cloudflare:test` to settle the `waitUntil` promise, then asserts against the recording `rest` fake that the `PATCH` happened and what it carried. A test that only checked the promise was scheduled would pass against a follow-up that never ran.
 
 Run `npm test` for the full suite with coverage, or `npx vitest run test/interactions.test.js` for one file while you work.
 
 ## Reference
 
 - [Receiving and responding to interactions](https://docs.discord.com/developers/interactions/receiving-and-responding) — interaction types, response types, and the follow-up endpoints
+- [Interaction callback](https://docs.discord.com/developers/interactions/receiving-and-responding#interaction-callback) — the 3-second initial-response deadline and the 15-minute token lifetime
+- [Edit original interaction response](https://docs.discord.com/developers/interactions/receiving-and-responding#edit-original-interaction-response) — the endpoint a deferred response is completed with
+- [`ctx.waitUntil()`](https://developers.cloudflare.com/workers/runtime-apis/context/#waituntil) — how long Cloudflare keeps the invocation alive after the response
 - [Validating security headers](https://docs.discord.com/developers/interactions/overview#validating-security-headers) — the signature scheme `src/discord/verify.js` implements
 - [Application commands](https://docs.discord.com/developers/interactions/application-commands#application-command-object-application-command-structure) — the definition object, the naming rules, and the option structure
 - [Contexts](https://docs.discord.com/developers/interactions/application-commands#contexts) — what `integration_types` and `contexts` control

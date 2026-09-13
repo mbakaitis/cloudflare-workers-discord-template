@@ -19,6 +19,7 @@ export default [
         fetch: "readonly",
         Request: "readonly",
         Response: "readonly",
+        setTimeout: "readonly",
         TextEncoder: "readonly",
         URL: "readonly",
         process: "readonly",
