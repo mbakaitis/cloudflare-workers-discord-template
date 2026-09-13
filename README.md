@@ -6,7 +6,8 @@ This is a GitHub template repository. Create your own project from it, then add 
 
 ## What you get
 
-- A minimal Worker in [src/index.js](src/index.js) with an explicit `fetch` handler.
+- A minimal Worker in [src/index.js](src/index.js) with an explicit `fetch` handler, routing a health check and a Discord interactions endpoint.
+- Mandatory Ed25519 signature verification on every interaction, in [src/discord/verify.js](src/discord/verify.js) — the check Discord itself performs before it will accept your endpoint URL.
 - Tests that execute in the Workers runtime locally through Miniflare (`@cloudflare/vitest-pool-workers`); no Cloudflare account required to start.
 - Contract tests that fail if non-production and production configuration get crossed.
 - Separate `non-prod` and `production` Wrangler environments, with deployment disabled by default.

@@ -140,8 +140,10 @@ Each maintainer file has a downstream counterpart — `claude-for-users.md`, `AG
 
 | Path | Contents |
 | --- | --- |
-| `src/` | Worker source; `src/index.js` is the entry point |
+| `src/` | Worker source; `src/index.js` is the entry point and routes only |
+| `src/discord/` | Discord protocol modules: signature verification, response builders |
 | `test/` | Unit tests |
+| `test/helpers/` | Test fixtures, including the Ed25519 interaction signer |
 | `test/contracts/` | Contract tests protecting the template's promises |
 | `docs/` | User-facing guides |
 | `.github/workflows/` | CI, deployment, and release |
