@@ -1,0 +1,21 @@
+---
+"cloudflare-workers-discord-template": minor
+---
+
+Register the command registry with Discord from the command line.
+
+Until now the registry in `src/commands/index.js` was only half-used: the Worker dispatched from it, but nothing told Discord those commands existed. `npm run register:non-prod`, `npm run register:production`, and `npm run register:dry-run` close that loop by `PUT`ting the same definition list to Discord's bulk-overwrite endpoint — guild-scoped for non-production, global for production. Two files, split along the line that matters: `scripts/lib/registration.js` holds all the logic and takes `fetch` as an argument, so it sits under the same coverage ratchet as `src/`; `scripts/register-commands.js` is arguments in, printed output and an exit code out, with no dependencies beyond Node's global `fetch`.
+
+**The scope is a required flag, not an inference.** `--guild` and `--global` are both explicit, and `--global` ignores `DISCORD_GUILD_ID` even when the shell has one exported. Deriving the scope from whether that variable happened to be set is the design where an inherited environment sends a production registration into somebody's test guild, and the isolation rule this template already applies to Cloudflare environments applies to Discord applications too.
+
+**The token cannot be printed, by construction rather than by care.** `buildRegistrationPlan` builds the printable request with `authorization: Bot [redacted]` already in it and no credential anywhere in the object. The real token is substituted inside `executeRegistration`, into an init object that is never returned. So no code path — including every error path — has a token available to log, and the error a refusal raises carries only Discord's status and its own response text.
+
+**What the endpoint actually does**, confirmed against Discord's documentation rather than recalled: `PUT` to either scope overwrites **all** types of application commands there, slash, user, and message alike, so the body is always the complete list and never a delta; commands that did not already exist count toward Discord's daily application-command create limits; guild commands update instantly, which is what makes guild scope the right one for non-production. Registration and deployment also roll back independently — redeploying an older Worker does not unregister anything — so deploy first and register second, and a command is never advertised before something can answer it.
+
+Tests, written before the implementation. The library gets Vitest unit tests for global-versus-guild URL selection, the `Authorization: Bot <token>` header shape, the body equalling the registry's definitions, a missing or blank variable failing before any request is made, a non-2xx surfacing both status and response body, and `--dry-run` issuing nothing. The CLI wrapper is the one piece Vitest cannot measure, so `test/contracts/registration.test.js` spawns the real file as a process with placeholder credentials and `test/helpers/forbid-fetch.js` preloaded — every `fetch` in the child throws, so a dry run that reached the network fails the test instead of passing quietly. Coverage stays at 100% across all four metrics with `scripts/lib/` now measured, so the thresholds in `vitest.config.js` are unchanged: they were already at the ceiling.
+
+Also in this change: `console` joins the shared platform globals in `eslint.config.js`, since a CLI's output is its whole purpose.
+
+Documentation: a new "Registering commands" section in `docs/discord-bot.md` — the two scopes and their endpoints, the overwrite-everything and daily-limit caveats, where each `DISCORD_*` value comes from in the Developer Portal, the dry-run output, and why the redaction is structural — plus the three scripts in the `README.md` commands table.
+
+Migration: none for a downstream project that has not customized `src/commands/index.js` beyond adding commands; the scripts register whatever the registry holds. A project that wrote its own registration script should delete it and adopt these, because two definition sources are the drift this template exists to prevent. Nothing here is wired into CI yet — registration on deploy, the declared secrets, and the isolation contract tests that enforce them land next.
