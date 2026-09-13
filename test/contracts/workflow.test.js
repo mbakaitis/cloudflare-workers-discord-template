@@ -44,6 +44,7 @@ describe("deployment workflow contract", () => {
   it("declares the same MCP servers in both config formats without credentials", async () => {
     const expectedServers = {
       "cloudflare-docs": "https://docs.mcp.cloudflare.com/mcp",
+      "discord-docs": "https://docs.discord.com/mcp",
       github: "https://api.githubcopilot.com/mcp/",
     };
 

@@ -53,7 +53,7 @@ git commit -m "Clarify binding placement rules; fixes #12"
 4. **Run the checks.**
 
    ```sh
-   npm test        # unit tests plus configuration contract tests
+   npm test        # unit tests with coverage, plus configuration contract tests
    npm run lint
    ```
 
@@ -69,12 +69,24 @@ This exemption disappears the moment the same change also touches code or config
 
 ## Testing expectations
 
-`npm test` runs two suites, and both matter:
+`npm test` runs two suites and a coverage gate, and all three matter:
 
 - **Unit tests** (`test/index.test.js`, Vitest via `@cloudflare/vitest-pool-workers`) exercise the Worker in the real Workers runtime through Miniflare. Cover success, malformed input, and expected error responses.
 - **Contract tests** (`test/contracts/`, Node's built-in test runner) protect the promises of the boilerplate — that non-production and production Workers stay distinct, that production bindings never sit at the top level, that deployment stays opt-in, and that the release workflow keeps its shape.
 
 Keep tests deterministic: no live Cloudflare calls, no shared mutable state, no wall-clock dependence, no undeclared credentials.
+
+### Coverage is a ratchet
+
+`npm test` measures coverage over `src/` and `scripts/lib/` and fails when it drops below the thresholds in [vitest.config.js](vitest.config.js). The provider is Istanbul, not V8, because tests run inside `workerd` and V8 coverage does not work in the Workers pool.
+
+The rule is one-directional:
+
+- **Never lower a threshold to make a change pass.** If new code cannot reach the current level, the fix is a test, or a design that is testable without a network — usually injecting the dependency instead of reaching for it. Lowering the number converts a reviewed promise into a silent regression.
+- **Raise a threshold by hand** in the same pull request that measures higher. `coverage.thresholds.autoUpdate` would do this for you and is deliberately not used: a threshold that rises without anyone noticing is not a promise anyone made. The new number belongs in the diff.
+- A contract test asserts the thresholds exist and are non-zero, so the ratchet cannot be quietly deleted. It does not assert the values — that would just be a second place to update, and the reviewed diff is the real control.
+
+Run `npx vitest run --coverage` while iterating; the console report lists the uncovered lines, and `coverage/index.html` shows the uncovered branches. Both are gitignored.
 
 If a contract test fails, that is usually the point. When a change *intentionally* breaks a promise, update the test, the documentation, and the migration notes in the same pull request, and classify the release accordingly.
 

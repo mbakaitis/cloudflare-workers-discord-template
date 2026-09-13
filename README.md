@@ -114,7 +114,7 @@ While this quick-start is helpful, we suggest if you also take a moment to read 
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Run the Worker locally with Wrangler |
-| `npm test` | Run the unit tests and the configuration contract tests |
+| `npm test` | Run the unit tests with coverage thresholds, then the configuration contract tests |
 | `npm run test:watch` | Re-run unit tests as you edit |
 | `npm run lint` | Check JavaScript style |
 | `npm run lint:fix` | Apply safe automatic style fixes, then review the diff |
@@ -166,9 +166,9 @@ That is a separate auto-deploy mechanism that bypasses this workflow's environme
 This template was built with AI assistance, and it ships ready for it. You do not have to use AI — every command works the same by hand — but if you do, the setup is done:
 
 - **Instruction files** tell an assistant how to work here: [claude.md](claude.md) is the canonical maintenance guide, with matching entry points in [AGENTS.md](AGENTS.md) and [.github/copilot-instructions.md](.github/copilot-instructions.md). They carry a versioned contract, so changes in expectations are reviewable rather than silent.
-- **MCP servers** for Cloudflare documentation and GitHub are declared in `.mcp.json` and `.vscode/mcp.json`, in both schema formats. An assistant can look up current Wrangler behavior instead of recalling a version that changed a year ago. Neither file contains a token.
+- **MCP servers** for Cloudflare documentation, Discord documentation, and GitHub are declared in `.mcp.json` and `.vscode/mcp.json`, in both schema formats. An assistant can look up current Wrangler behavior or Discord's interaction contract instead of recalling a version that changed a year ago. Neither file contains a token. The two documentation servers need no authentication; the GitHub server prompts you to authorize it on first use and stays unavailable until you do.
 - **Contract tests** in `test/contracts/` are one safety net. Suggest pointing non-production at a production database and you get a failing test immediately, not a subtle bug discovered later.
-- **Unit tests** are a second safety net. Agents should NEVER delete tests or reduce test coverage with a proposed change, unless directed by a human to do so.
+- **Unit tests** are a second safety net, with a coverage ratchet over `src/` and `scripts/lib/` behind them. Agents should NEVER delete tests or reduce test coverage with a proposed change, unless directed by a human to do so — and `npm test` now fails if they try.
 - **Human gates** cover the rest: deployment stays off until you opt in, production requires approval, and Cloudflare credentials live in GitHub secrets that no local tool can read. Automation can open a pull request; it cannot ship to production.
 
 Instructions guide an assistant; they cannot constrain one. That is why the promises that matter are tests and gates rather than prose. See [Using AI with this template](docs/using-ai.md) for the details, including how to switch to the application-facing instruction files once you start your own project.
