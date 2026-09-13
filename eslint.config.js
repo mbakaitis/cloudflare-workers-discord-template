@@ -15,6 +15,7 @@ export default [
         // Web platform APIs available in workerd, in Node 22+, and in the
         // Vitest Workers pool. Declared here rather than silenced at each use
         // site with an inline disable comment.
+        console: "readonly",
         crypto: "readonly",
         fetch: "readonly",
         Request: "readonly",

@@ -124,6 +124,71 @@ const response = await dispatchInteraction(
 
 **Suppress mentions in anything a user typed.** `/echo` replies through `reply(content, { suppressMentions: true })`, which sets `allowed_mentions: { parse: [] }`. Interaction responses parse user mentions by default, so sending raw user input back means the bot can ping somebody on a stranger's behalf. Pass `suppressMentions` whenever the content came from a user.
 
+## Registering commands
+
+A command in the registry is a command the Worker will *answer*. Discord still has to be told it exists, and that is a separate act with its own timing: **registration and deployment roll back independently**. Redeploying an older Worker does not unregister a command, and re-registering an older list does not change the code serving it. Deploy first, register second — that way a command is never advertised before something can answer it.
+
+```sh
+npm run register:dry-run     # print the plan, contact nothing
+npm run register:non-prod    # guild-scoped, against the non-production application
+npm run register:production  # global, against the production application
+```
+
+### Two scopes, stated explicitly
+
+Discord has one registration endpoint per scope, and both are bulk overwrites:
+
+| Scope | Endpoint | Behavior |
+| --- | --- | --- |
+| Guild | `PUT /applications/{application.id}/guilds/{guild.id}/commands` | Available only in that one server. Updates **instantly**, which is what makes it the right scope for non-production. |
+| Global | `PUT /applications/{application.id}/commands` | Available everywhere the app is installed. Discord version-checks a stale command and reloads it for the user. |
+
+Three properties of that endpoint are worth knowing before you run it:
+
+- **It overwrites everything.** `PUT` replaces *all* types of application commands in that scope — slash, user, and message commands — so the body has to be the complete list, never a delta. A command dropped from the registry disappears from Discord on the next registration, which is the intended behavior and also the whole reason the body is built from the registry rather than assembled by hand.
+- **New commands count against a daily limit.** Commands that did not already exist count toward Discord's daily application-command create limits. Re-registering an unchanged list does not.
+- **The scope is never inferred.** `--guild` and `--global` are required flags. The scope could have been derived from whether `DISCORD_GUILD_ID` was set, and that is exactly the design where an inherited shell variable sends a production registration into somebody's test guild. `--global` ignores `DISCORD_GUILD_ID` even when it is set.
+
+### What it needs, and where each value comes from
+
+Each environment registers against **its own Discord application**, so these are three per-environment values, never shared between non-production and production. In CI they come from the GitHub Environment's secrets; locally, export them in your shell for the length of the command.
+
+| Variable | Where to find it | Needed for |
+| --- | --- | --- |
+| `DISCORD_APPLICATION_ID` | Developer Portal → your app → **General Information** → Application ID | Both scopes |
+| `DISCORD_TOKEN` | Developer Portal → your app → **Bot** → Reset Token. Treat as a credential: it can act as the bot. | Both scopes |
+| `DISCORD_GUILD_ID` | Discord client with Developer Mode on → right-click the server → **Copy Server ID** | `--guild` only |
+
+A missing or blank variable fails before any request is made, and the error names every missing variable at once.
+
+### The dry run
+
+`npm run register:dry-run` prints the exact request — method, URL, headers, and body — and sends nothing:
+
+```text
+PUT https://discord.com/api/v10/applications/.../guilds/.../commands
+  scope: guild
+  headers:
+    content-type: application/json
+    authorization: Bot [redacted]
+  commands: ping, echo, slow
+  body:
+[ ... ]
+```
+
+It still validates the environment, so it doubles as a pre-flight check. Swap in `--global --dry-run` to see the production plan instead.
+
+The redaction is structural rather than careful. `buildRegistrationPlan` produces the plan with `authorization: Bot [redacted]` already in it; the real token is substituted inside `executeRegistration`, into an object that is never returned. So no code path has a token available to print, including the error paths — and the error Discord's refusal raises carries only the status and Discord's own response text.
+
+### The two files
+
+| File | Responsibility |
+| --- | --- |
+| `scripts/lib/registration.js` | All of the logic: argument parsing, environment validation, URL and body construction, and the request itself. Pure, apart from taking `fetch` as an argument, and measured by the same coverage ratchet as `src/`. |
+| `scripts/register-commands.js` | The CLI: `process.argv` in, printed output and an exit code out. No dependencies — Node's global `fetch` is the whole HTTP client. |
+
+The wrapper is thin because it is the part Vitest cannot measure: it is exercised instead by `test/contracts/registration.test.js`, which spawns the real file with `fetch` replaced by a landmine (`test/helpers/forbid-fetch.js`). A dry run that reached the network would fail that test rather than pass quietly.
+
 ## Deferring slow work
 
 Discord requires an initial response within **3 seconds** of sending the interaction, and it invalidates the interaction token if one does not arrive. The token itself is then valid for **15 minutes**, so the way to serve work that will not finish in 3 seconds is to acknowledge inside the window and send the real answer afterwards. `/slow` in `src/commands/slow.js` is the worked example.
@@ -169,6 +234,7 @@ The whole suite runs with no network, no Cloudflare account, and no Discord appl
 - **Discord is never called.** `src/discord/rest.js` takes `fetch` as an argument and the dispatcher takes `rest` as an argument, so tests inject a fake that records calls.
 - **No test holds a real credential.** Test keys come from the test-pool `env`, generated for that run.
 - **Nothing waits.** The only timer in the template is `src/runtime.js`, tested directly at zero milliseconds. Every command test injects its own.
+- **The registration CLI is spawned, not simulated.** `test/contracts/registration.test.js` runs `scripts/register-commands.js` as a real process with placeholder credentials and `--dry-run`, preloading `test/helpers/forbid-fetch.js` so any `fetch` throws. It asserts the printed plan, the exit codes, and that no path prints the token.
 - **Deferred work is asserted, not assumed.** `test/commands/slow.test.js` uses `createExecutionContext()` and `waitOnExecutionContext()` from `cloudflare:test` to settle the `waitUntil` promise, then asserts against the recording `rest` fake that the `PATCH` happened and what it carried. A test that only checked the promise was scheduled would pass against a follow-up that never ran.
 
 Run `npm test` for the full suite with coverage, or `npx vitest run test/interactions.test.js` for one file while you work.
@@ -182,4 +248,8 @@ Run `npm test` for the full suite with coverage, or `npx vitest run test/interac
 - [Validating security headers](https://docs.discord.com/developers/interactions/overview#validating-security-headers) — the signature scheme `src/discord/verify.js` implements
 - [Application commands](https://docs.discord.com/developers/interactions/application-commands#application-command-object-application-command-structure) — the definition object, the naming rules, and the option structure
 - [Contexts](https://docs.discord.com/developers/interactions/application-commands#contexts) — what `integration_types` and `contexts` control
+- [Bulk overwrite global application commands](https://docs.discord.com/developers/interactions/application-commands#bulk-overwrite-global-application-commands) — the endpoint `npm run register:production` calls, the overwrite-everything warning, and the daily create limit
+- [Bulk overwrite guild application commands](https://docs.discord.com/developers/interactions/application-commands#bulk-overwrite-guild-application-commands) — the endpoint `npm run register:non-prod` calls
+- [Making a guild command](https://docs.discord.com/developers/interactions/application-commands#making-a-guild-command) — why guild scope is the one to test with: guild commands update instantly
+- [Authentication](https://docs.discord.com/developers/reference#authentication) — the `Authorization: Bot <token>` header registration sends
 - [Allowed mentions](https://docs.discord.com/developers/resources/message#allowed-mentions-object) — which mentions an interaction response parses by default

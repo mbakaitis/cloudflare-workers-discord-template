@@ -122,6 +122,11 @@ While this quick-start is helpful, we suggest if you also take a moment to read 
 | `npm run changeset` | Record the release impact of a change |
 | `npm run deploy:non-prod` | Deploy the non-production Worker |
 | `npm run deploy:production` | Deploy the production Worker |
+| `npm run register:dry-run` | Print the command-registration plan without contacting Discord |
+| `npm run register:non-prod` | Register the commands with the non-production Discord application, scoped to one guild |
+| `npm run register:production` | Register the commands globally with the production Discord application |
+
+The `register:*` scripts need `DISCORD_TOKEN`, `DISCORD_APPLICATION_ID`, and — for the guild-scoped one — `DISCORD_GUILD_ID`, each belonging to that environment's own Discord application. [The Discord bot](docs/discord-bot.md#registering-commands) covers where each value comes from, why registering is a separate act from deploying, and what the bulk-overwrite endpoint replaces.
 
 Node.js 22 is the supported version. `.nvmrc` is the single source of truth — run `nvm use` if you manage Node with nvm — and `engines.node` plus every GitHub Actions workflow read from it.
 

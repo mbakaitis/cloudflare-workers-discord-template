@@ -31,7 +31,10 @@
     "version": "changeset version",
     "release": "changeset tag",
     "deploy:non-prod": "wrangler deploy --env non-prod",
-    "deploy:production": "wrangler deploy --env production"
+    "deploy:production": "wrangler deploy --env production",
+    "register:non-prod": "node scripts/register-commands.js --guild",
+    "register:production": "node scripts/register-commands.js --global",
+    "register:dry-run": "node scripts/register-commands.js --guild --dry-run"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.2",
