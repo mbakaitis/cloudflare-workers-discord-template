@@ -1,0 +1,268 @@
+import { readFile } from "node:fs/promises";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { join } from "node:path";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
+
+const execFileAsync = promisify(execFile);
+
+const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
+const wranglerConfigPath = new URL("../../wrangler.jsonc", import.meta.url);
+const gitignorePath = new URL("../../.gitignore", import.meta.url);
+const devVarsExamplePath = new URL("../../.dev.vars.example", import.meta.url);
+
+/**
+ * The Discord credentials the Worker's environments must declare.
+ *
+ * These are names, never values: each environment is backed by its own Discord
+ * application, so the same three names resolve to different secrets in
+ * non-production and production.
+ */
+const requiredDiscordSecrets = ["DISCORD_PUBLIC_KEY", "DISCORD_APPLICATION_ID", "DISCORD_TOKEN"];
+
+/**
+ * Shapes a pasted Discord credential would have.
+ *
+ * A bot token is three dot-separated base64url segments; an application public
+ * key is 64 lowercase hex characters. Neither shape occurs naturally in this
+ * repository, so a match means a real credential — or something close enough to
+ * a real one to be worth deleting — reached a tracked file.
+ */
+const credentialShapes = [
+  {
+    name: "Discord bot token",
+    pattern: /\b[A-Za-z0-9_-]{23,28}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}\b/,
+  },
+  {
+    name: "Discord application public key",
+    pattern: /\b[0-9a-fA-F]{64}\b/,
+  },
+];
+
+/** File extensions whose bytes are not text and cannot hold a pasted secret. */
+const binaryExtensions = [".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp", ".woff", ".woff2"];
+
+/**
+ * Parse `wrangler.jsonc`.
+ *
+ * The file carries no comments today, so `JSON.parse` is enough and keeps this
+ * contract test dependency-free — matching `environment-isolation.test.js`.
+ *
+ * @returns {Promise<Record<string, any>>}
+ */
+async function readWranglerConfig() {
+  return JSON.parse(await readFile(wranglerConfigPath, "utf8"));
+}
+
+/**
+ * Every configuration level that must declare the Discord secrets: the top
+ * level and each named environment.
+ *
+ * @param {Record<string, any>} config
+ * @returns {Array<{ label: string, level: Record<string, any> }>}
+ */
+function secretDeclarationLevels(config) {
+  return [
+    { label: "top level", level: config },
+    ...Object.entries(config.env ?? {}).map(([name, level]) => ({
+      label: `env.${name}`,
+      level,
+    })),
+  ];
+}
+
+/**
+ * Collect every string in a parsed configuration, with the path that reached it.
+ *
+ * @param {unknown} value
+ * @param {string} [path]
+ * @returns {Array<{ path: string, value: string }>}
+ */
+function collectStrings(value, path = "") {
+  if (typeof value === "string") {
+    return [{ path, value }];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((entry, index) => collectStrings(entry, `${path}[${index}]`));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.entries(value).flatMap(([key, entry]) =>
+      collectStrings(entry, path ? `${path}.${key}` : key),
+    );
+  }
+
+  return [];
+}
+
+/**
+ * List the repository's tracked text files.
+ *
+ * `git ls-files` rather than a directory walk: the scan is about what is
+ * committed, so an ignored local `.dev.vars` is correctly invisible to it.
+ *
+ * @returns {Promise<string[]>}
+ */
+async function trackedTextFiles() {
+  const { stdout } = await execFileAsync("git", ["ls-files", "-z"], { cwd: repositoryRoot });
+
+  return stdout
+    .split("\0")
+    .filter(Boolean)
+    .filter((file) => !binaryExtensions.some((extension) => file.endsWith(extension)));
+}
+
+describe("Discord secret declaration contract", () => {
+  it("declares the required Discord secret names at every configuration level", async () => {
+    const config = await readWranglerConfig();
+
+    for (const { label, level } of secretDeclarationLevels(config)) {
+      const declared = level.secrets?.required;
+
+      assert.ok(
+        Array.isArray(declared),
+        `wrangler.jsonc ${label} must declare secrets.required`,
+      );
+
+      for (const name of requiredDiscordSecrets) {
+        assert.ok(
+          declared.includes(name),
+          `wrangler.jsonc ${label} must declare ${name} in secrets.required`,
+        );
+      }
+    }
+  });
+
+  it("covers both a non-production and a production environment", async () => {
+    const config = await readWranglerConfig();
+    const environments = Object.keys(config.env ?? {});
+
+    assert.deepEqual(environments.sort(), ["non-prod", "production"]);
+  });
+
+  it("declares Discord secret names without any Discord value", async () => {
+    const config = await readWranglerConfig();
+    const declaredPaths = new Set([
+      "secrets.required",
+      ...Object.keys(config.env ?? {}).map((name) => `env.${name}.secrets.required`),
+    ]);
+
+    for (const { path, value } of collectStrings(config)) {
+      if (!value.includes("DISCORD")) {
+        continue;
+      }
+
+      const container = path.replace(/\[\d+\]$/, "");
+      assert.ok(
+        declaredPaths.has(container),
+        `wrangler.jsonc mentions ${value} at ${path}; Discord credentials belong in secrets, `
+          + "so only secrets.required may name them",
+      );
+    }
+
+    const configText = await readFile(wranglerConfigPath, "utf8");
+    for (const { name, pattern } of credentialShapes) {
+      assert.doesNotMatch(configText, pattern, `wrangler.jsonc contains a ${name}-shaped literal`);
+    }
+  });
+});
+
+describe("committed secret scan contract", () => {
+  it("finds no credential-shaped literal in any tracked file", async () => {
+    const files = await trackedTextFiles();
+    const findings = [];
+
+    for (const file of files) {
+      const contents = await readFile(join(repositoryRoot, file), "utf8");
+
+      for (const { name, pattern } of credentialShapes) {
+        const match = pattern.exec(contents);
+
+        if (match) {
+          const line = contents.slice(0, match.index).split("\n").length;
+          findings.push(`${file}:${line} looks like a ${name}`);
+        }
+      }
+    }
+
+    assert.deepEqual(findings, [], findings.join("\n"));
+  });
+
+  it("scans a meaningful number of tracked files", async () => {
+    const files = await trackedTextFiles();
+
+    // A scan that silently matched nothing would pass the assertion above while
+    // guarding nothing at all.
+    assert.ok(files.length > 20, `expected the scan to cover the repository, got ${files.length}`);
+  });
+});
+
+describe("local development secrets contract", () => {
+  it("ignores local secret files while tracking the example", async () => {
+    const gitignore = await readFile(gitignorePath, "utf8");
+
+    assert.match(gitignore, /^\.dev\.vars$/m);
+    assert.match(gitignore, /^\.dev\.vars\.\*$/m);
+    assert.match(gitignore, /^!\.dev\.vars\.example$/m);
+    assert.match(gitignore, /^\.env$/m);
+    assert.match(gitignore, /^\.env\.\*$/m);
+  });
+
+  it("ignores .dev.vars and .env in practice, and not the example", async () => {
+    /**
+     * Ask Git itself rather than re-implementing its pattern precedence: the
+     * negation only works because it follows the wildcard, and only Git can
+     * confirm that.
+     *
+     * @param {string} path
+     * @returns {Promise<boolean>}
+     */
+    const isIgnored = async (path) => {
+      try {
+        await execFileAsync("git", ["check-ignore", "-q", path], { cwd: repositoryRoot });
+
+        return true;
+      } catch (error) {
+        assert.equal(error.code, 1, `git check-ignore failed for ${path}: ${error.stderr}`);
+
+        return false;
+      }
+    };
+
+    assert.equal(await isIgnored(".dev.vars"), true);
+    assert.equal(await isIgnored(".dev.vars.non-prod"), true);
+    assert.equal(await isIgnored(".env"), true);
+    assert.equal(await isIgnored(".env.production"), true);
+    assert.equal(await isIgnored(".dev.vars.example"), false);
+  });
+
+  it("provides a placeholder-only .dev.vars.example covering every Discord variable", async () => {
+    const example = await readFile(devVarsExamplePath, "utf8");
+    const assignments = new Map(
+      example
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("#"))
+        .map((line) => {
+          const [name, ...rest] = line.split("=");
+
+          return [name.trim(), rest.join("=").trim().replace(/^"|"$/g, "")];
+        }),
+    );
+
+    for (const name of [...requiredDiscordSecrets, "DISCORD_GUILD_ID"]) {
+      assert.ok(assignments.has(name), `.dev.vars.example must document ${name}`);
+    }
+
+    for (const [name, value] of assignments) {
+      assert.match(
+        value,
+        /replace-me/,
+        `.dev.vars.example must give ${name} an obvious placeholder, not ${value}`,
+      );
+    }
+  });
+});

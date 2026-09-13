@@ -6,12 +6,21 @@
   "observability": {
     "enabled": true
   },
+  "secrets": {
+    "required": ["DISCORD_PUBLIC_KEY", "DISCORD_APPLICATION_ID", "DISCORD_TOKEN"]
+  },
   "env": {
     "non-prod": {
-      "name": "cloudflare-workers-discord-template-non-prod"
+      "name": "cloudflare-workers-discord-template-non-prod",
+      "secrets": {
+        "required": ["DISCORD_PUBLIC_KEY", "DISCORD_APPLICATION_ID", "DISCORD_TOKEN"]
+      }
     },
     "production": {
-      "name": "cloudflare-workers-discord-template-production"
+      "name": "cloudflare-workers-discord-template-production",
+      "secrets": {
+        "required": ["DISCORD_PUBLIC_KEY", "DISCORD_APPLICATION_ID", "DISCORD_TOKEN"]
+      }
     }
   }
 }

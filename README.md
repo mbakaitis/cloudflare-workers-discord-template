@@ -44,8 +44,11 @@ This is a GitHub template repository. Create your own project from it, then add 
    You can work as long as you want on testing/dev or just to learn without doing that. But when you want it to go live? You need accounts.
 
    ```sh
+   cp .dev.vars.example .dev.vars
    npm run dev
    ```
+
+   `.dev.vars` is untracked and holds your **non-production** Discord application's values. Wrangler warns about any that are missing and starts anyway. See [Create your Discord applications](docs/using-this-template.md#3-create-your-discord-applications) for where the values come from and why non-production gets its own application.
 
 5. **Confirm the guardrails still pass.** 
 
@@ -104,7 +107,7 @@ This is a GitHub template repository. Create your own project from it, then add 
 
 Note that if you did all of this, the GitHub action that deploys will run on the *next* push to `develop` or `main`. 
                
-See [Configure GitHub environments and secrets](docs/using-this-template.md#4-configure-github-environments-and-secrets) for the exact token permission and the full trigger sequence.
+See [Configure GitHub environments and secrets](docs/using-this-template.md#5-configure-github-environments-and-secrets) for the exact token permission and the full trigger sequence.
 
 ***Phew!  Done!***
 

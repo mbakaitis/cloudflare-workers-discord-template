@@ -149,17 +149,19 @@ Three properties of that endpoint are worth knowing before you run it:
 - **New commands count against a daily limit.** Commands that did not already exist count toward Discord's daily application-command create limits. Re-registering an unchanged list does not.
 - **The scope is never inferred.** `--guild` and `--global` are required flags. The scope could have been derived from whether `DISCORD_GUILD_ID` was set, and that is exactly the design where an inherited shell variable sends a production registration into somebody's test guild. `--global` ignores `DISCORD_GUILD_ID` even when it is set.
 
-### What it needs, and where each value comes from
+### What it needs
 
-Each environment registers against **its own Discord application**, so these are three per-environment values, never shared between non-production and production. In CI they come from the GitHub Environment's secrets; locally, export them in your shell for the length of the command.
+Each environment registers against **its own Discord application**, so these are per-environment values, never shared between non-production and production. [Create your Discord applications](using-this-template.md#3-create-your-discord-applications) says where each one comes from.
 
-| Variable | Where to find it | Needed for |
-| --- | --- | --- |
-| `DISCORD_APPLICATION_ID` | Developer Portal → your app → **General Information** → Application ID | Both scopes |
-| `DISCORD_TOKEN` | Developer Portal → your app → **Bot** → Reset Token. Treat as a credential: it can act as the bot. | Both scopes |
-| `DISCORD_GUILD_ID` | Discord client with Developer Mode on → right-click the server → **Copy Server ID** | `--guild` only |
+| Variable | Needed for |
+| --- | --- |
+| `DISCORD_APPLICATION_ID` | Both scopes |
+| `DISCORD_TOKEN` | Both scopes |
+| `DISCORD_GUILD_ID` | `--guild` only |
 
 A missing or blank variable fails before any request is made, and the error names every missing variable at once.
+
+The script is plain Node, so it reads these from the shell environment — not from `.dev.vars`, which only `wrangler dev` loads. Export them for the length of the command, or source the file first (`set -a; source .dev.vars; set +a`). In CI they come from the GitHub Environment's secrets.
 
 ### The dry run
 

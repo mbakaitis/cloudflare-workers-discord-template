@@ -92,7 +92,7 @@ The deployment workflow is skipped until the GitHub Actions repository **variabl
 
 Protect `develop` and `main` from direct pushes, deletion, force-pushes, and merges without a pull request and passing CI. Require at least one approving review and resolved review threads. Leave feature branches unprotected, so local development stays lightweight.
 
-This template does not ship a committed ruleset file for that policy. An imported JSON payload can save with fewer rules than it declares — organization policy, repository ownership, and plan availability all affect what GitHub accepts — so configure the settings by hand instead, following the checklist in [Using this template](using-this-template.md#5-configure-branch-protection), and verify what actually saved with `gh api repos/OWNER/REPOSITORY/rulesets` rather than trusting a file in this repository.
+This template does not ship a committed ruleset file for that policy. An imported JSON payload can save with fewer rules than it declares — organization policy, repository ownership, and plan availability all affect what GitHub accepts — so configure the settings by hand instead, following the checklist in [Using this template](using-this-template.md#6-configure-branch-protection), and verify what actually saved with `gh api repos/OWNER/REPOSITORY/rulesets` rather than trusting a file in this repository.
 
 ## Rollback
 
