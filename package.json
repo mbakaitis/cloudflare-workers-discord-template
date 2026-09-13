@@ -48,5 +48,8 @@
     "fsevents@2.3.3": true,
     "workerd@1.20260815.1": true,
     "workerd@1.20260911.1": true
+  },
+  "dependencies": {
+    "discord-interactions": "^4.4.0"
   }
 }

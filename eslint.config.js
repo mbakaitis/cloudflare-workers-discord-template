@@ -12,7 +12,13 @@ export default [
       ecmaVersion: "latest",
       sourceType: "module",
       globals: {
+        // Web platform APIs available in workerd, in Node 22+, and in the
+        // Vitest Workers pool. Declared here rather than silenced at each use
+        // site with an inline disable comment.
+        crypto: "readonly",
+        Request: "readonly",
         Response: "readonly",
+        TextEncoder: "readonly",
         URL: "readonly",
         process: "readonly",
       },
