@@ -134,6 +134,8 @@ npm run register:non-prod    # guild-scoped, against the non-production applicat
 npm run register:production  # global, against the production application
 ```
 
+In a configured project you rarely run these by hand: `deploy.yml` runs the matching one after every deploy, guild-scoped from `develop` and global from `main`. See [Commands register themselves on deploy](using-this-template.md#commands-register-themselves-on-deploy). Run them locally when you are working against a tunnel, or when a registration step failed and you want to see the error interactively.
+
 ### Two scopes, stated explicitly
 
 Discord has one registration endpoint per scope, and both are bulk overwrites:
