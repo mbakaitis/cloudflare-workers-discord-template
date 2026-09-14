@@ -22,7 +22,7 @@ For the prefixed branches, we ask that names use lowercase letters, numbers, dot
 
 `develop` and `main` matter because two GitHub Actions workflows are wired directly to those exact names, not because of any access restriction:
 
-- [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) triggers on `push` to `main` or `develop` and nothing else (`on.push.branches`). Inside the job, `github.ref_name` picks the environment: a push on `main` runs `wrangler deploy --env production`, a push on `develop` runs `wrangler deploy --env non-prod`. Push the same commit under a different branch name and the workflow simply never starts.
+- [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) triggers on `push` to `main` or `develop` and nothing else (`on.push.branches`). Inside the job, `github.ref_name` picks the environment: a push on `main` runs `wrangler deploy --env production`, a push on `develop` runs `wrangler deploy --env non-prod`. The same expression then picks the registration scope — `main` registers the slash commands globally, `develop` registers them to the non-production test guild — in a step that runs after the deploy, so a command reaches Discord only once the Worker serving it is live. Push the same commit under a different branch name and the workflow simply never starts.
 - [.github/workflows/release.yml](../.github/workflows/release.yml) triggers on `push` to `main` only, and runs the changesets version/release job described in [Versioning and changesets](versioning-and-changesets.md).
 - [.github/workflows/ci.yml](../.github/workflows/ci.yml) triggers on any `pull_request`, regardless of the source or target branch name, so lint and test run for `feature/*`, `release/*`, `hotfix/*`, or anything else you open a pull request from.
 
@@ -97,3 +97,7 @@ This template does not ship a committed ruleset file for that policy. An importe
 ## Rollback
 
 Identify the previous successful version through the Cloudflare dashboard or Wrangler deployment history. Roll back with a reviewed commit on `main`; do not hot-edit production code in the dashboard. If production deployment must be stopped while you investigate, disable the `production` GitHub environment or tighten its required reviewers.
+
+**Slash commands do not roll back with the Worker.** The Worker and its command registration are two separate pieces of state that happen to be updated by the same job. Rolling the Worker back through the Cloudflare dashboard changes only the code; Discord still advertises whatever command list was registered last. Only another registration changes that — which is why a reverting commit on `main` is the better rollback: it redeploys the older Worker *and* re-registers the older command list, in that order, in one run.
+
+The mismatch is survivable in both directions, and the Worker is built to make it so. A command Discord no longer advertises simply cannot be invoked. A command Discord still advertises but the rolled-back Worker no longer knows gets an ephemeral "unknown command" reply rather than an error — see [Discord bot](discord-bot.md#registering-commands). Nothing crashes; users just see a command that does not work until the two agree again.

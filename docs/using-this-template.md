@@ -243,11 +243,40 @@ Add these secrets at repository or environment scope:
 - `CLOUDFLARE_API_TOKEN` — see [Creating the API token](#creating-the-api-token) below.
 - `CLOUDFLARE_ACCOUNT_ID` — the Cloudflare account containing them. Find it on the Workers & Pages overview page in the dashboard.
 
+Then add the Discord secrets the registration step reads — these belong to **each environment**, not to the repository, because the whole point is that the two resolve to different Discord applications ([step 3](#3-create-your-discord-applications) says where each value comes from):
+
+| Secret | `non-prod` | `production` |
+| --- | --- | --- |
+| `DISCORD_TOKEN` | The non-production application's bot token | The production application's bot token |
+| `DISCORD_APPLICATION_ID` | The non-production application ID | The production application ID |
+| `DISCORD_GUILD_ID` | Your test server's ID | Leave unset — production registers globally |
+
+A repository-scope `DISCORD_TOKEN` would be visible to both environments and would silently make the production bot reachable from a `develop` deploy. Add these at environment scope only, under **Settings > Environments > _name_ > Environment secrets**.
+
+`DISCORD_PUBLIC_KEY` is deliberately absent: only the Worker verifies signatures, and it reads that from the Cloudflare secret set in [step 3](#set-them-on-each-worker). CI never needs it.
+
 Then, and only then, enable deployment. `DEPLOY_ENABLED` is deliberately a repository **variable**, not a secret: it holds no sensitive value and exists purely as the explicit opt-in. Add it with the value `true` under **Settings > Secrets and variables > Actions > Variables**.
 
-Setting `DEPLOY_ENABLED` does not deploy anything by itself — it only removes the guard inside a step that already exists in [.github/workflows/deploy.yml](../.github/workflows/deploy.yml). `deploy.yml` triggers on `push` to `main` or `develop`; a repository variable change is not a push, so it does not start a run. The next push or merge to `develop` or `main` is what actually deploys — the sequence in that run is: checkout, install, lint, test, and only if all of that passes and `DEPLOY_ENABLED` is `true`, `wrangler deploy --env non-prod` (from `develop`) or `--env production` (from `main`, after the `production` environment's required reviewer approves). If you enabled the flag without a fresh push already queued, merge or push once more to trigger the first real deployment. Until `DEPLOY_ENABLED` exists, the deploy job is skipped every time and no Cloudflare credentials are used.
+Setting `DEPLOY_ENABLED` does not deploy anything by itself — it only removes the guard inside a step that already exists in [.github/workflows/deploy.yml](../.github/workflows/deploy.yml). `deploy.yml` triggers on `push` to `main` or `develop`; a repository variable change is not a push, so it does not start a run. The next push or merge to `develop` or `main` is what actually deploys — the sequence in that run is: checkout, install, lint, test, and only if all of that passes and `DEPLOY_ENABLED` is `true`, `wrangler deploy --env non-prod` (from `develop`) or `--env production` (from `main`, after the `production` environment's required reviewer approves), then command registration. If you enabled the flag without a fresh push already queued, merge or push once more to trigger the first real deployment. Until `DEPLOY_ENABLED` exists, the deploy job is skipped every time and no Cloudflare credentials are used.
 
 Never commit these values or put them in `.env`, `.dev.vars`, or generated files.
+
+### Commands register themselves on deploy
+
+You do not run `npm run register:*` by hand after the first setup. `deploy.yml` registers the command definitions as its last step, in the same `DEPLOY_ENABLED`-guarded job, immediately after the Wrangler deploy:
+
+| Branch | Environment | Registration |
+| --- | --- | --- |
+| `develop` | `non-prod` | `npm run register:non-prod` — guild-scoped, to `DISCORD_GUILD_ID`, visible instantly in that one server |
+| `main` | `production` | `npm run register:production` — global, against the production application |
+
+Three consequences worth knowing before your first deploy:
+
+- **After, not before.** Registration follows the deploy so a command is never advertised to Discord before a live Worker can answer it. A failed deploy never reaches the registration step.
+- **Every deploy overwrites.** It is an unconditional bulk overwrite of that scope's command list, with no diff-or-skip logic — deploying the same commands twice re-registers them. Commands that did not already exist count toward Discord's daily application-command create limits; re-registering an unchanged list does not. So routine deploys cost nothing against the limit, while a day of adding and removing commands can reach it.
+- **A missing Discord secret fails the run after the Worker is already live.** The deploy has succeeded by then; only the registration step fails, leaving Discord advertising the previous command list. Add the secrets in the table above, then re-run the job.
+
+Registration and deployment roll back independently — see [Rollback](gitflow-and-branching.md#rollback).
 
 ### Creating the API token
 
@@ -308,6 +337,8 @@ git push -u origin feature/verify-gitflow
 
 After merging into `develop`, check the non-production Worker. Then open a pull request from `develop` into `main`; after the production environment approval, check the production Worker.
 
+Read the whole job log, not just its final status: the registration step runs after the deploy and prints the command names it registered. Non-production registration is guild-scoped, so the commands appear in your test server immediately — typing `/` there is the fastest confirmation that the deploy and the registration both worked.
+
 A deploy fails if that environment is missing any secret named in `secrets.required`, and names the missing ones. If the first non-production deploy fails that way, finish [step 3](#3-create-your-discord-applications) for `--env non-prod` and re-run the job.
 
 The deploy workflow never runs for feature branches. Local work uses `npm run dev`; only merges to `develop` and `main` deploy.
@@ -356,6 +387,7 @@ Rollback is a reviewed revert or a deployment of the previous successful commit.
 - `npm run dev` starts from your own `.dev.vars`, which is untracked and holds non-production values only.
 - `npm test` passes, including the contract tests.
 - A merge to `develop` deploys non-production, and an approved merge to `main` deploys production.
+- Each GitHub environment holds its own `DISCORD_TOKEN` and `DISCORD_APPLICATION_ID` (plus `DISCORD_GUILD_ID` for `non-prod`), so a deploy registers commands against that environment's application and no other.
 - The AI instruction files describe your project: `claude.md`, `AGENTS.md`, and `.github/copilot-instructions.md` came from the `-for-users` files (or you deleted all six, if you don't use AI tooling).
 
 ## Adding environment-specific bindings

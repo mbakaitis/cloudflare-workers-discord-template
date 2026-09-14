@@ -12,6 +12,7 @@ const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 const wranglerConfigPath = new URL("../../wrangler.jsonc", import.meta.url);
 const gitignorePath = new URL("../../.gitignore", import.meta.url);
 const devVarsExamplePath = new URL("../../.dev.vars.example", import.meta.url);
+const deployWorkflowPath = new URL("../../.github/workflows/deploy.yml", import.meta.url);
 
 /**
  * The Discord credentials the Worker's environments must declare.
@@ -96,6 +97,57 @@ function collectStrings(value, path = "") {
   }
 
   return [];
+}
+
+/**
+ * Split the deployment workflow's job names out of its `jobs:` mapping.
+ *
+ * The registration steps inherit the `DEPLOY_ENABLED` guard by living in the
+ * guarded job, so "which jobs exist" is part of what that guarantee rests on.
+ *
+ * @param {string} workflow Raw `deploy.yml`.
+ * @returns {string[]}
+ */
+function jobNames(workflow) {
+  const jobsBlock = workflow.split(/\njobs:\n/)[1];
+
+  assert.ok(jobsBlock, "deploy.yml must declare a jobs: mapping");
+
+  return jobsBlock
+    .split("\n")
+    .filter((line) => /^ {2}[A-Za-z][\w-]*:$/.test(line))
+    .map((line) => line.trim().replace(/:$/, ""));
+}
+
+/**
+ * Split the deploy job's `steps:` list into blocks, in file order.
+ *
+ * Parsed by indentation rather than with a YAML library so the contract tests
+ * stay dependency-free, matching `workflow.test.js`. Each step's continuation
+ * lines are trimmed and joined, which is enough to assert what a step runs and
+ * which secrets it reads; only the order of the blocks is load-bearing.
+ *
+ * @param {string} workflow Raw `deploy.yml`.
+ * @returns {string[]} One entry per step, in the order the workflow runs them.
+ */
+function deployJobSteps(workflow) {
+  const stepsBlock = workflow.split(/\n {4}steps:\n/)[1];
+
+  assert.ok(stepsBlock, "deploy.yml must declare a steps: list for its deploy job");
+
+  /** @type {string[][]} */
+  const steps = [];
+
+  for (const line of stepsBlock.split("\n")) {
+    if (/^ {6}- /.test(line)) {
+      steps.push([line.replace(/^ {6}- /, "")]);
+    } else if (line.trim() !== "") {
+      assert.ok(steps.length > 0, `unexpected line before the first step: ${line}`);
+      steps[steps.length - 1].push(line.trim());
+    }
+  }
+
+  return steps.map((lines) => lines.join("\n"));
 }
 
 /**
@@ -263,6 +315,148 @@ describe("local development secrets contract", () => {
         /replace-me/,
         `.dev.vars.example must give ${name} an obvious placeholder, not ${value}`,
       );
+    }
+  });
+});
+
+describe("deploy-time registration contract", () => {
+  /** The only secrets a registration step may read, unqualified by environment. */
+  const registrationSecrets = new Set([
+    "DISCORD_TOKEN",
+    "DISCORD_APPLICATION_ID",
+    "DISCORD_GUILD_ID",
+  ]);
+
+  /**
+   * The deploy job's steps, and the indexes of the ones that register commands.
+   *
+   * @returns {Promise<{ steps: string[], deployIndex: number, registrationIndexes: number[] }>}
+   */
+  const readDeploySteps = async () => {
+    const steps = deployJobSteps(await readFile(deployWorkflowPath, "utf8"));
+
+    return {
+      steps,
+      deployIndex: steps.findIndex((step) => step.includes("cloudflare/wrangler-action@v3")),
+      registrationIndexes: steps
+        .map((step, index) => (step.includes("npm run register:") ? index : -1))
+        .filter((index) => index >= 0),
+    };
+  };
+
+  it("registers commands after the deploy that makes the endpoint live", async () => {
+    const { steps, deployIndex, registrationIndexes } = await readDeploySteps();
+
+    assert.ok(deployIndex >= 0, "deploy.yml must deploy with cloudflare/wrangler-action@v3");
+    assert.ok(registrationIndexes.length > 0, "deploy.yml must register the command definitions");
+
+    for (const index of registrationIndexes) {
+      // The index, not merely the presence: registering before the deploy would
+      // advertise commands the live Worker does not yet handle.
+      assert.ok(
+        index > deployIndex,
+        `step ${index} registers commands at or before the deploy step ${deployIndex}:\n`
+          + steps[index],
+      );
+    }
+  });
+
+  it("keeps registration inside the DEPLOY_ENABLED-guarded job", async () => {
+    const workflow = await readFile(deployWorkflowPath, "utf8");
+
+    // One job, so there is no ungated job a registration step could drift into.
+    assert.deepEqual(jobNames(workflow), ["deploy"]);
+    assert.match(workflow, /if:\s*\$\{\{\s*vars\.DEPLOY_ENABLED\s*==\s*'true'\s*\}\}/);
+
+    const guardIndex = workflow.indexOf("vars.DEPLOY_ENABLED");
+    const stepsIndex = workflow.indexOf("\n    steps:\n");
+
+    assert.ok(
+      guardIndex >= 0 && stepsIndex > guardIndex,
+      "the DEPLOY_ENABLED guard must sit on the job, above its steps, so every step inherits it",
+    );
+  });
+
+  it("registers globally from main and to a guild everywhere else", async () => {
+    const { steps, registrationIndexes } = await readDeploySteps();
+
+    // Which branch runs which script is asserted here; that `register:production`
+    // means `--global` and `register:non-prod` means `--guild` is asserted once,
+    // in `registration.test.js`, so the scope mapping has a single home.
+    const registrationSteps = registrationIndexes.map((index) => steps[index]);
+    const production = registrationSteps.filter((step) =>
+      step.includes("npm run register:production"));
+    const nonProduction = registrationSteps.filter((step) =>
+      step.includes("npm run register:non-prod"));
+
+    assert.equal(production.length, 1, "exactly one step may register production commands");
+    assert.equal(nonProduction.length, 1, "exactly one step may register non-production commands");
+    assert.match(production[0], /if:\s*\$\{\{\s*github\.ref_name == 'main'\s*\}\}/);
+    assert.match(nonProduction[0], /if:\s*\$\{\{\s*github\.ref_name != 'main'\s*\}\}/);
+  });
+
+  it("gives each registration step only its own environment's secrets", async () => {
+    const workflow = await readFile(deployWorkflowPath, "utf8");
+    const { steps, registrationIndexes } = await readDeploySteps();
+
+    // Isolation comes from the GitHub Environment the job selects: the same
+    // secret names resolve to the production or the non-production Discord
+    // application, and nothing names the other environment's values.
+    assert.match(
+      workflow,
+      /environment:\s*\$\{\{\s*github\.ref_name == 'main' && 'production' \|\| 'non-prod'\s*\}\}/,
+    );
+
+    for (const index of registrationIndexes) {
+      const step = steps[index];
+
+      for (const [, name] of step.matchAll(/secrets\.([A-Z0-9_]+)/g)) {
+        assert.ok(
+          registrationSecrets.has(name),
+          `registration step ${index} reads secrets.${name}; a registration step may read only `
+            + `${[...registrationSecrets].join(", ")}, which the environment resolves`,
+        );
+      }
+
+      for (const [, variable, secret] of step.matchAll(
+        /^([A-Z0-9_]+):\s*\$\{\{\s*secrets\.([A-Z0-9_]+)\s*\}\}$/gm,
+      )) {
+        assert.equal(
+          variable,
+          secret,
+          `registration step ${index} feeds ${variable} from secrets.${secret}`,
+        );
+      }
+    }
+
+    /**
+     * The one registration step that runs the given script.
+     *
+     * @param {string} script
+     * @returns {string}
+     */
+    const registrationStep = (script) => {
+      const matches = registrationIndexes
+        .map((index) => steps[index])
+        .filter((step) => step.includes(script));
+
+      assert.equal(matches.length, 1, `expected exactly one step running ${script}`);
+
+      return matches[0];
+    };
+
+    const production = registrationStep("npm run register:production");
+    const nonProduction = registrationStep("npm run register:non-prod");
+
+    // A global registration has no guild to scope to, so production is never
+    // handed one — an unused guild id is one accident away from being used.
+    assert.doesNotMatch(production, /GUILD/);
+    assert.match(nonProduction, /DISCORD_GUILD_ID:\s*\$\{\{\s*secrets\.DISCORD_GUILD_ID\s*\}\}/);
+
+    for (const step of [production, nonProduction]) {
+      for (const name of ["DISCORD_TOKEN", "DISCORD_APPLICATION_ID"]) {
+        assert.match(step, new RegExp(`${name}:\\s*\\$\\{\\{\\s*secrets\\.${name}\\s*\\}\\}`));
+      }
     }
   });
 });
