@@ -4,8 +4,6 @@
 
 This repository is the versioned boilerplate for a Discord bot on Cloudflare Workers. Its default application serves Discord HTTP interactions from a Worker and registers its own slash commands, so a new project starts from something that already works end to end. It must remain useful when copied into a new Worker project and must make future Cloudflare, Wrangler, Discord, and platform changes deliberate, testable, and documented.
 
-> **Transitional note — remove before release.** This contract was raised to 3.0.0 ahead of the code it governs, deliberately: the specification moves first so the implementation has something to comply with rather than being blessed retroactively. Until the command work described in [the refactor plan](docs/discord-template-edits.md) finishes, this repository does not yet satisfy the Discord requirements below. That window stays inside the current feature-branch series and nothing is released mid-way. Delete this note once the shape is satisfied.
-
 ## Mission and scope
 
 - Keep the smallest practical Discord bot that developers can install with Wrangler and extend: an interactions endpoint, a command registry, and a registration path — and no more. The bot is a worked example of the platform's shape, not a feature-complete framework.
