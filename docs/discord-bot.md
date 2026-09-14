@@ -243,6 +243,53 @@ The whole suite runs with no network, no Cloudflare account, and no Discord appl
 
 Run `npm test` for the full suite with coverage, or `npx vitest run test/interactions.test.js` for one file while you work.
 
+## Developing against a local tunnel
+
+`npm run dev` serves the Worker on `http://localhost:8787`, which is enough for `curl` and for every test above. It is not enough for Discord: interactions arrive as inbound HTTPS requests, so Discord has to be able to reach your machine before it will send one. Wrangler opens a [Cloudflare Tunnel](https://developers.cloudflare.com/workers/local-development/local-dev-tunnels/) for the dev session:
+
+```sh
+npm run dev
+# then press [t] in the Wrangler session to open or close the tunnel
+```
+
+Wrangler prints a public `https://<random>.trycloudflare.com` URL that proxies to the local Worker. `npx wrangler dev --tunnel` opens one at startup instead, and `npx wrangler dev --tunnel-name=<name>` uses a [named tunnel](https://developers.cloudflare.com/tunnel/get-started/) with a stable hostname — worth setting up if you do this regularly, because a quick tunnel's hostname is new every session and Discord has to be told about each one.
+
+Point your **non-production** application at it — never the production one:
+
+1. Set **General Information > Interactions Endpoint URL** to `https://<random>.trycloudflare.com/interactions`. Saving sends Discord's `PING` straight to your laptop, so a successful save is a real test of the signature path.
+2. Check that the `DISCORD_PUBLIC_KEY` in your `.dev.vars` is that same application's public key. If it is not, the `PING` gets a `401` and Discord refuses the URL — which is the system working.
+3. Register the commands to your test guild. The script is plain Node and does not read `.dev.vars`, so export the values first:
+
+   ```sh
+   set -a; source .dev.vars; set +a
+   npm run register:non-prod
+   ```
+
+An application has exactly one Interactions Endpoint URL. While your tunnel occupies the field, the deployed non-production Worker receives nothing — so put its URL back when you are done, or keep a third Discord application for tunnel work if you share the non-production one with anybody.
+
+### A tunnel is local emulation, not a deployed environment
+
+What is answering is `workerd` on your machine under Miniflare, with a public door propped open in front of it. It is not a Cloudflare environment, and the differences are the ones that bite:
+
+- Secrets come from `.dev.vars`, not from Cloudflare's encrypted secret store — so this proves nothing about whether `wrangler secret put` was run for `--env non-prod`.
+- No Worker is deployed. Nothing appears in the dashboard, and `observability` captures nothing, because there is no deployed Worker to observe.
+- Any binding you add later (KV, D1, R2, Queues) runs against local simulated state by default, not the resource your environment is configured with.
+- Quick tunnels are documented as testing-only: a 200-concurrent-request limit and no Server-Sent Events. Interactions fit comfortably; do not benchmark through one.
+
+So a tunnel session proves the interaction contract — real signatures over a real network, real dispatch, a real deferred follow-up — and proves nothing about the deploy. Only an actual `--env non-prod` deploy does that; see [Verify the deployment path](using-this-template.md#7-verify-the-deployment-path).
+
+## Where the rest would attach
+
+This template serves HTTP interactions and stops. The obvious next features are deliberately absent, each because it needs its own documented purpose, local-development story, and test strategy before it belongs in a boilerplate. If you add one, here is where it lands:
+
+| Feature | Where it attaches | What it drags in |
+| --- | --- | --- |
+| **Components and modals** | `src/interactions.js`, alongside the type-`2` branch: type `3` (`MESSAGE_COMPONENT`) and type `5` (`MODAL_SUBMIT`), which currently get the deliberate `400`. Route them on `data.custom_id` rather than a command name. | A second registry keyed by `custom_id`, and a convention for encoding state into that string — it is the only thing Discord hands back. |
+| **Autocomplete** | The same dispatcher: type `4` (`APPLICATION_COMMAND_AUTOCOMPLETE`), answered with a type `8` response. Most naturally an optional `autocomplete` export next to a command's `handler`, so the definition, the handler, and its suggestions stay in one file. | Nothing structural, but it is latency-sensitive: autocomplete cannot defer, so the reply has to beat the same window. |
+| **Storage (KV, D1, R2, Queues)** | `wrangler.jsonc`, inside `env.non-prod` and `env.production` only — see [Adding environment-specific bindings](using-this-template.md#adding-environment-specific-bindings). Handlers already receive `env`, so nothing in the dispatch path changes. | Per-environment resources, a local-development story, and contract tests that keep non-production off production data. A Queue is also the answer for work that outlives `waitUntil`'s ~30 seconds. |
+| **OAuth2** | New routes in `src/index.js` beside `/interactions`, for the redirect and the callback. | A client secret as a fourth per-environment secret, somewhere to store tokens, and a threat model — this is the point where the Worker starts holding user credentials. |
+| **The Gateway** | Nowhere. It needs a persistent WebSocket connection, which a Worker invocation cannot hold. | A long-running process somewhere else. If you need presence or message events, run a Gateway client separately and keep this Worker for interactions; the two can share nothing but a data store. |
+
 ## Reference
 
 - [Receiving and responding to interactions](https://docs.discord.com/developers/interactions/receiving-and-responding) — interaction types, response types, and the follow-up endpoints

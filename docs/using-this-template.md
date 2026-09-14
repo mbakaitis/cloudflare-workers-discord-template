@@ -15,7 +15,7 @@ There are two ways to get these files, and the difference that matters is what y
 | Linked to this repository on GitHub | No | No |
 | Best for | Real projects | Evaluating the template, or preserving history to cherry-pick from later |
 
-Neither path merges upstream changes into your repository automatically — see [Keeping up with upstream changes](#9-keeping-up-with-upstream-changes) for how to adopt them deliberately either way.
+Neither path merges upstream changes into your repository automatically — see [Keeping up with upstream changes](#10-keeping-up-with-upstream-changes) for how to adopt them deliberately either way.
 
 ### Use this template (recommended for real projects)
 
@@ -187,6 +187,12 @@ For each application, from its page in the Developer Portal:
 
 The public key and application ID are identifiers, not secrets; the bot token is a credential that can act as your bot. This template treats all of them as secrets anyway, because the cost of doing so is zero and the cost of confusing which is which is not.
 
+### Install the non-production application in your test server
+
+Guild-scoped registration only works in a server the application is actually installed in — Discord answers `403 Missing Access` otherwise. Under **Installation** (or **OAuth2 > URL Generator**), build an install link with the `applications.commands` and `bot` scopes, open it, and add the application to your test server.
+
+Do this for the non-production application now. The production application is installed by whoever adds it to a real server, which is a separate decision from setting this project up.
+
 ### Set them on each Worker
 
 `wrangler.jsonc` declares the names (see [step 2](#2-name-your-workers)); the values are set per environment with Wrangler and stored encrypted by Cloudflare:
@@ -214,7 +220,13 @@ npm run dev
 
 `.dev.vars` is ignored by Git — only `.dev.vars.example` is tracked, and it contains nothing but placeholders. Wrangler loads the declared secret names from `.dev.vars` and warns about any that are missing, so `npm run dev` starts either way: `GET /` answers `OK`, and `POST /interactions` answers `401` for anything it cannot verify.
 
-Making the local Worker reachable by Discord itself needs a tunnel; see [Discord bot](discord-bot.md) for the interaction lifecycle this endpoint implements.
+Making the local Worker reachable by Discord itself needs a tunnel; see [Developing against a local tunnel](discord-bot.md#developing-against-a-local-tunnel) for how, and [Discord bot](discord-bot.md) for the interaction lifecycle this endpoint implements.
+
+### The endpoint URL comes last
+
+One field on each application is deliberately left for [step 8](#8-point-each-discord-application-at-its-worker): the **Interactions Endpoint URL**. It cannot be filled in yet, and the reason is an ordering constraint that only becomes visible once everything is real — Discord sends a signed `PING` to the URL at the moment you save it and rejects the URL if nothing answers correctly. So the Worker has to exist, be deployed, and already hold its `DISCORD_PUBLIC_KEY` before the URL will save at all.
+
+That fixes the order of the remaining steps: set the secrets, deploy, then point Discord at the deployed Worker. Command registration is the same shape of dependency in reverse — it happens automatically after each deploy ([Commands register themselves on deploy](#commands-register-themselves-on-deploy)), so commands are registered before you set the endpoint URL. They are visible in Discord and simply cannot be answered until the URL is saved, which is the harmless direction for the two to be out of step.
 
 ## 4. Create the Git branches
 
@@ -339,11 +351,30 @@ After merging into `develop`, check the non-production Worker. Then open a pull 
 
 Read the whole job log, not just its final status: the registration step runs after the deploy and prints the command names it registered. Non-production registration is guild-scoped, so the commands appear in your test server immediately — typing `/` there is the fastest confirmation that the deploy and the registration both worked.
 
+Listed is not the same as working. Until [step 8](#8-point-each-discord-application-at-its-worker) gives the application an Interactions Endpoint URL, Discord has nowhere to send the interaction and invoking a command fails. Finish the deploy first anyway: the URL will not save before the Worker is live.
+
 A deploy fails if that environment is missing any secret named in `secrets.required`, and names the missing ones. If the first non-production deploy fails that way, finish [step 3](#3-create-your-discord-applications) for `--env non-prod` and re-run the job.
 
 The deploy workflow never runs for feature branches. Local work uses `npm run dev`; only merges to `develop` and `main` deploy.
 
-## 8. Releases
+## 8. Point each Discord application at its Worker
+
+Now that both Workers are deployed, tell each Discord application where to send interactions. In the [Developer Portal](https://discord.com/developers/applications), open the application, and on **General Information** set **Interactions Endpoint URL** to that environment's Worker plus the `/interactions` path:
+
+| Application | Interactions Endpoint URL |
+| --- | --- |
+| Non-production | `https://acme-weather-api-non-prod.<your-subdomain>.workers.dev/interactions` |
+| Production | `https://acme-weather-api-production.<your-subdomain>.workers.dev/interactions` |
+
+Use the hostname the deploy printed — `wrangler deploy` and the deploy job's log both report the deployed URL — or a custom route if you have configured one. Each application points at its **own** Worker; crossing them is how a `develop` deploy ends up answering production's users.
+
+Saving is the test. Discord immediately sends a signed `PING` to the URL and refuses to save one that does not answer `{"type": 1}` with a JSON content type, so a successful save proves four things at once: the Worker is deployed, the route is right, `DISCORD_PUBLIC_KEY` is set on that environment, and it is the public key of *this* application. A save that fails is almost always the last of those — a public key from the other application.
+
+Discord also re-sends invalid signatures as a routine check and removes the endpoint URL of an application that accepts one. That is not a scenario to guard against here; it is why [signature verification has no bypass](discord-bot.md#1-verify).
+
+Once the URL is saved, the commands registered by the deploy start working. Try `/ping` in your test server.
+
+## 9. Releases
 
 Changesets is already configured. Keep the `.changeset/` directory and `.github/workflows/release.yml`. For a change that affects your project's contract, run `npm run changeset`, choose the SemVer increment, and commit the generated file with your pull request. Merging to `main` opens a release pull request; merging that versions the package and creates a tag. It does not publish to npm.
 
@@ -351,7 +382,7 @@ If your project makes the package public or wants npm publication, update the Ch
 
 Full details are in [Versioning and changesets](versioning-and-changesets.md).
 
-## 9. Keeping up with upstream changes
+## 10. Keeping up with upstream changes
 
 Nothing merges upstream changes into your repository automatically, regardless of which path you chose in [Choosing how to start](#0-choosing-how-to-start). Adopt them deliberately instead. Add this repository as a second remote once:
 
@@ -387,6 +418,8 @@ Rollback is a reviewed revert or a deployment of the previous successful commit.
 - `npm run dev` starts from your own `.dev.vars`, which is untracked and holds non-production values only.
 - `npm test` passes, including the contract tests.
 - A merge to `develop` deploys non-production, and an approved merge to `main` deploys production.
+- Each Discord application's Interactions Endpoint URL points at its own deployed Worker and saved successfully, which means Discord's `PING` validation passed.
+- `/ping` answers in your test server.
 - Each GitHub environment holds its own `DISCORD_TOKEN` and `DISCORD_APPLICATION_ID` (plus `DISCORD_GUILD_ID` for `non-prod`), so a deploy registers commands against that environment's application and no other.
 - The AI instruction files describe your project: `claude.md`, `AGENTS.md`, and `.github/copilot-instructions.md` came from the `-for-users` files (or you deleted all six, if you don't use AI tooling).
 
