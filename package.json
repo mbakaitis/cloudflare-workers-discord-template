@@ -28,7 +28,7 @@
     "test:watch": "vitest",
     "changeset": "changeset",
     "changeset:status": "changeset status",
-    "version": "changeset version",
+    "version": "changeset version && npm install --package-lock-only",
     "release": "changeset tag",
     "deploy:non-prod": "wrangler deploy --env non-prod",
     "deploy:production": "wrangler deploy --env production",

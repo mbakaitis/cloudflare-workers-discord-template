@@ -92,7 +92,9 @@ describe("deployment workflow contract", () => {
 
     assert.equal(packageJson.scripts.changeset, "changeset");
     assert.equal(packageJson.scripts["changeset:status"], "changeset status");
-    assert.equal(packageJson.scripts.version, "changeset version");
+    // Changesets must drive the bump, but the script may chain follow-up work
+    // onto it — the lockfile refresh asserted in versioning.test.js does.
+    assert.match(packageJson.scripts.version, /^changeset version\b/);
     assert.equal(packageJson.scripts.release, "changeset tag");
     assert.equal(changesetConfig.baseBranch, "main");
     assert.equal(changesetConfig.privatePackages.version, true);
