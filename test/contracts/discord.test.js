@@ -5,6 +5,7 @@ import { execFile } from "node:child_process";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { credentialShapes } from "../helpers/credential-shapes.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -21,25 +22,6 @@ const deployWorkflowPath = new URL("../../.github/workflows/deploy.yml", import.
  * non-production and production.
  */
 const requiredDiscordSecrets = ["DISCORD_PUBLIC_KEY", "DISCORD_APPLICATION_ID", "DISCORD_TOKEN"];
-
-/**
- * Shapes a pasted Discord credential would have.
- *
- * A bot token is three dot-separated base64url segments; an application public
- * key is 64 lowercase hex characters. Neither shape occurs naturally in this
- * repository, so a match means a real credential — or something close enough to
- * a real one to be worth deleting — reached a tracked file.
- */
-const credentialShapes = [
-  {
-    name: "Discord bot token",
-    pattern: /\b[A-Za-z0-9_-]{23,28}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}\b/,
-  },
-  {
-    name: "Discord application public key",
-    pattern: /\b[0-9a-fA-F]{64}\b/,
-  },
-];
 
 /** File extensions whose bytes are not text and cannot hold a pasted secret. */
 const binaryExtensions = [".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp", ".woff", ".woff2"];

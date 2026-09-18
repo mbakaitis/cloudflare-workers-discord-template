@@ -86,6 +86,7 @@ Those live in a file named `test/contracts/<subject>.template-only.test.js`, bes
 - A project created from this template deletes these files whole. Nothing in a `.template-only.test.js` file may be imported by a sibling that ships, so repeat a small shared constant rather than exporting it from the template-only side.
 - When you split an assertion out, the shipped half must keep asserting the underlying promise in a relaxed form, not lose it. `workflow.test.js` no longer pins the MCP server list; it asserts that `.mcp.json` and `.vscode/mcp.json` declare the *same* set, that every entry is `{ type, url }`, and that no entry carries a credential-shaped key. `discord.test.js` no longer pins the environment set; it asserts that both a non-production and a production environment exist, leaving a project free to add a third.
 - Prove the relaxed form can still fail before you call the split done. Break the thing it guards, watch it go red, and revert. A guard nobody has seen fail is not a guard.
+- **Register it in [template-manifest.json](template-manifest.json).** A `.template-only.test.js` file that nobody added to the manifest's `prune` list ships to a project that cannot pass it. `test/contracts/manifest.template-only.test.js` reads `test/contracts/` and fails on any template-only file the manifest does not name, so this is enforced rather than remembered. The same rule applies to anything else added here that is template-only, not just tests.
 
 ### Coverage is a ratchet
 
@@ -164,3 +165,6 @@ The audit it drives still detects which of the three layouts it is looking at â€
 | `.github/workflows/` | CI, deployment, and release |
 | `.changeset/` | Pending release notes |
 | `wrangler.jsonc` | Worker names, compatibility date, environments, bindings |
+| `template-manifest.json` | What is template-only: the paths a new project prunes, the payload's destinations, the instruction-file pairs |
+| `.template/` | The downstream replacements for the documents written from the template's point of view, with `{{PLACEHOLDER}}` tokens |
+| `scripts/lib/setup.js` | The pure planner that turns the manifest into an ordered list of operations |
