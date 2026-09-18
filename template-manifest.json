@@ -31,6 +31,7 @@
     "test/contracts/discord.template-only.test.js",
     "test/contracts/instructions.template-only.test.js",
     "test/contracts/manifest.template-only.test.js",
+    "test/contracts/setup-transforms.template-only.test.js",
     "test/contracts/workflow.template-only.test.js",
     "test/helpers/instruction-files.js",
     "template-manifest.json"
