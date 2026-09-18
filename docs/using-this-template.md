@@ -64,6 +64,8 @@ mv .github/copilot-instructions-for-users.md .github/copilot-instructions.md
 
 If you don't use AI tooling, delete all six files instead. See [Using AI With This Template](using-ai.md#the-instruction-files) for what each file is for.
 
+Do all three moves, or none of them. A contract test in `npm test` checks the result, and it accepts either finished state — the template's layout, or yours after the swap — while failing a half-finished one, which is the easy mistake to make and an awkward one to notice later.
+
 ## 2. Name your Workers
 
 This step assigns the Cloudflare Worker resource names for your project. These are not GitHub repository names, branch names, domains, or API tokens. A Worker name identifies a deployed Worker inside your Cloudflare account, so choose names that are unique and recognizable.
@@ -187,13 +189,74 @@ For each application, from its page in the Developer Portal:
 
 The public key and application ID are identifiers, not secrets; the bot token is a credential that can act as your bot. This template treats all of them as secrets anyway, because the cost of doing so is zero and the cost of confusing which is which is not.
 
+**Keep your own copy of each bot token.** The public key and application ID stay readable in the Developer Portal indefinitely, so you can always go back for them and never need to record them anywhere. The token is different: it is displayed once, at the moment you reset it, and cannot be read again. Put it somewhere durable — a password manager, not a file in this repository — before you leave the page. If you lose it, the only recovery is **Reset Token**, which invalidates the old value and means re-entering the new one in every store that holds it: three for non-production, two for production, as the next section lays out.
+
+### Where each value goes
+
+The same names live in up to three different places, and they are not interchangeable. Read this once before you paste any values, because it is the part of setup most likely to leave you guessing:
+
+| | `.dev.vars` in your working copy | Cloudflare's per-Worker secret store | GitHub **Environment** secrets |
+| --- | --- | --- | --- |
+| **non-production** | `DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`, `DISCORD_TOKEN`, `DISCORD_GUILD_ID` | `DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`, `DISCORD_TOKEN` | `DISCORD_TOKEN`, `DISCORD_APPLICATION_ID`, `DISCORD_GUILD_ID` |
+| **production** | **never** | `DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`, `DISCORD_TOKEN` | `DISCORD_TOKEN`, `DISCORD_APPLICATION_ID` |
+
+- **`.dev.vars`** is read by `wrangler dev` on your own machine, and by nothing else. It holds **non-production values only.** Production credentials never belong on a developer machine, so this file has no production counterpart — do not create one, even though `.gitignore` would ignore it. Set it in [Run it locally](#run-it-locally), below; no Cloudflare account needed.
+- **Cloudflare's per-Worker encrypted secret store** is read by your **deployed** Worker, at runtime. Each environment's Worker holds its own Discord application's values. Set it in [Set them on each Worker](#set-them-on-each-worker), below; needs a Cloudflare account.
+- **GitHub Environment secrets** are read by the command-registration step of `deploy.yml`, in CI. Set them in [step 5](#5-configure-github-environments-and-secrets), which also explains the two absences: `DISCORD_PUBLIC_KEY` is missing everywhere because only the Worker verifies signatures, and `DISCORD_GUILD_ID` is missing from `production` because production registers globally.
+
+So a non-production value ends up in three places and a production value in two, and nothing you do locally is what makes either environment work. Setting one store does not set the others, and nothing synchronizes them: a value in `.dev.vars` never reaches Cloudflare, and a `wrangler secret put` never reaches your local `npm run dev`.
+
+One name is loaded differently from the rest. `wrangler dev` reads the three names in `secrets.required` out of `.dev.vars` automatically, but `npm run register:non-prod` reads `DISCORD_GUILD_ID` from the shell environment — so having it in the file is not enough. Export it, or run `set -a; source .dev.vars`, before you run the script.
+
+The rest of this step works through the first two in that order, deliberately: local development needs no Cloudflare account, so there is no reason to open one before you have the bot running on your own machine.
+
 ### Install the non-production application in your test server
 
-Guild-scoped registration only works in a server the application is actually installed in — Discord answers `403 Missing Access` otherwise. Under **Installation** (or **OAuth2 > URL Generator**), build an install link with the `applications.commands` and `bot` scopes, open it, and add the application to your test server.
+Guild-scoped registration only works in a server the application is actually installed in — Discord answers `403 Missing Access` otherwise. Build an install link under **OAuth2 > URL Generator**, open it, and choose your test server. Authorizing it requires the `MANAGE_GUILD` permission on that server.
 
-Do this for the non-production application now. The production application is installed by whoever adds it to a real server, which is a separate decision from setting this project up.
+This is what the bot in this template needs, and no more:
+
+| | Select | Why |
+| --- | --- | --- |
+| **Scopes** | `applications.commands` | The only scope slash commands require. It registers and serves every command in this template. |
+| **Scopes** | `bot` — optional | Adds a bot user to the server. Not needed for commands in a channel; needed if you want the `BOT_DM` context that the shipped definitions declare, since that context is the DM with the bot user. |
+| **Bot permissions** | none | Leave every box unchecked. |
+
+Discord states the rule directly: application commands do not depend on a bot user in the guild, and "if your application does not require a bot user in the guild for its commands to work, you don't need to add the bot scope or a permission bitfield to the URL" ([Authorizing your application](https://docs.discord.com/developers/interactions/application-commands#authorizing-your-application)).
+
+No permissions are needed because this bot only ever *answers an interaction it was handed*, using that interaction's token — never posting into a channel on its own initiative. Tutorials commonly check `Send Messages` in the URL generator, including [Discord's own Cloudflare Workers tutorial](https://docs.discord.com/developers/tutorials/hosting-on-cloudflare-workers#adding-bot-permissions). That permission governs sending messages to a channel, which nothing in `src/` does. Granting it costs you the ability to say the bot cannot do it.
+
+#### The list changes when your bot does
+
+Scopes and permissions describe *your features*, not this template, so keeping them right is your project's job and nothing in this repository can check it for you. Roughly:
+
+- **Posting outside an interaction** — a scheduled announcement, a reply in another channel, reacting, uploading a file, pinning — needs the matching bot permission and therefore the `bot` scope.
+- **Reading anything** — message history, the member list, roles — needs its own permission, and message content may need a privileged intent approved for the application.
+- **Mentions.** `MENTION_EVERYONE` is one of the few permissions Discord computes from the bot's own grants when it responds to an interaction. This template suppresses mentions in user-supplied content instead; see [The Discord bot](discord-bot.md#habits-worth-copying).
+- **OAuth2 features** — logging a user in, reading their guilds — add *scopes*, a client secret, and somewhere to store tokens.
+
+When a feature needs more, widen the install URL and re-run it: changing scopes or permissions requires re-authorization, or an edit under **Server Settings > Integrations**. Record why each permission is there, the same way you would a new binding.
+
+Do all of this for the non-production application now. The production application is installed by whoever adds it to a real server, which is a separate decision from setting this project up.
+
+### Run it locally
+
+Do this before anything that touches Cloudflare. Local development needs no Cloudflare account, no deployed Worker, and no production application — only your **non-production** application's values. Copy the tracked example file and fill them in:
+
+```sh
+cp .dev.vars.example .dev.vars
+npm run dev
+```
+
+`.dev.vars` is ignored by Git — only `.dev.vars.example` is tracked, and it contains nothing but placeholders. Because `wrangler.jsonc` declares `secrets.required`, Wrangler loads exactly those three names from `.dev.vars` and warns about any that are missing, so `npm run dev` starts either way: `GET /` answers `OK`, and `POST /interactions` answers `401` for anything it cannot verify.
+
+Making the local Worker reachable by Discord itself needs a tunnel; see [Developing against a local tunnel](discord-bot.md#developing-against-a-local-tunnel) for how, and [Discord bot](discord-bot.md) for the interaction lifecycle this endpoint implements.
+
+Nothing up to this point has touched Cloudflare, and this is a reasonable place to stop for a while: you can write commands, run `npm test`, and — with a tunnel — answer real interactions from Discord, all without an account. The next section is where that changes.
 
 ### Set them on each Worker
+
+**This is the first step that needs a Cloudflare account**, and the first that changes anything inside it. Wrangler has to be authenticated too: `npx wrangler login` opens a browser, or export `CLOUDFLARE_API_TOKEN` in your shell.
 
 `wrangler.jsonc` declares the names (see [step 2](#2-name-your-workers)); the values are set per environment with Wrangler and stored encrypted by Cloudflare:
 
@@ -205,22 +268,25 @@ npx wrangler secret put DISCORD_TOKEN --env non-prod
 
 Repeat with `--env production`, using the **production** application's values. Each command prompts for the value and does not echo it.
 
-Because the names are declared, `wrangler deploy --env <name>` fails with a list of what is missing if any of them is not set on that Worker. A `--dry-run` does not check — it never contacts your account — so the first real deploy is where a missing secret surfaces.
+#### Your Workers do not exist yet, and Wrangler will offer to create them
 
-These are Cloudflare Worker secrets, set from your machine. They are separate from the GitHub Actions secrets in [step 5](#5-configure-github-environments-and-secrets), which are what CI uses.
+Nothing has deployed at this point, so there is no `acme-weather-api-non-prod` in your account for a secret to attach to. Wrangler does not treat that as an error. It asks:
 
-### Run it locally
+> There doesn't seem to be a Worker called "acme-weather-api-non-prod". Do you want to create a new Worker with that name and add secrets to it?
 
-Local development needs no Cloudflare account and no production application. Copy the tracked example file and fill in your **non-production** values:
+Answer yes. Wrangler uploads a placeholder Worker — a stub that serves nothing — so the secret has somewhere to live, then stores the secret on it. Your first real deploy in [step 7](#7-verify-the-deployment-path) replaces the stub with your actual code and keeps the secrets.
 
-```sh
-cp .dev.vars.example .dev.vars
-npm run dev
-```
+Two things follow, and both are normal: your Cloudflare dashboard lists both Worker names before you have deployed anything, and a request to either one fails until that first deploy. Answering no aborts and stores nothing, which only moves the problem to step 7.
 
-`.dev.vars` is ignored by Git — only `.dev.vars.example` is tracked, and it contains nothing but placeholders. Wrangler loads the declared secret names from `.dev.vars` and warns about any that are missing, so `npm run dev` starts either way: `GET /` answers `OK`, and `POST /interactions` answers `401` for anything it cannot verify.
+#### Why this cannot wait until after the first deploy
 
-Making the local Worker reachable by Discord itself needs a tunnel; see [Developing against a local tunnel](discord-bot.md#developing-against-a-local-tunnel) for how, and [Discord bot](discord-bot.md) for the interaction lifecycle this endpoint implements.
+Because the deploy is what would fail. The `secrets.required` blocks mean `wrangler deploy --env <name>` refuses to deploy an environment missing any of the three and names the ones it cannot find.
+
+CI runs that deploy, and **CI never sets these for you.** `deploy.yml` runs `wrangler deploy` and then the registration script; it contains no `wrangler secret put` step, and GitHub is never given `DISCORD_PUBLIC_KEY` at all ([step 5](#5-configure-github-environments-and-secrets) explains why). Setting the Worker's secrets by hand, once per environment, is the only path.
+
+A `--dry-run` does not check, because it never contacts your account — which is why [step 2](#2-name-your-workers)'s dry runs passed with none of this configured. The first real deploy is where a missing secret surfaces.
+
+These are Cloudflare Worker secrets, set once per environment from your machine. They are separate from the GitHub Actions secrets in [step 5](#5-configure-github-environments-and-secrets), which are what CI uses for command registration.
 
 ### The endpoint URL comes last
 

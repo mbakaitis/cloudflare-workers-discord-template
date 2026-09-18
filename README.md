@@ -62,6 +62,8 @@ Steps 1–6 need no Cloudflare account and no deployment — you can stop there 
 
    `.dev.vars` is untracked and holds your **non-production** application's values from step 1. Wrangler warns about any that are missing and starts anyway: `GET /` answers `OK`, and `POST /interactions` answers `401` for anything it cannot verify.
 
+   `.dev.vars` is read by `wrangler dev` on this machine and nowhere else. It does not set the deployed Worker's secrets — that is step 8, and it is a separate copy of the same values.
+
    Discord cannot reach `localhost`, so answering a real `/ping` from your machine needs a tunnel — see [Developing against a local tunnel](docs/discord-bot.md#developing-against-a-local-tunnel).
 
 6. **Confirm the guardrails still pass.** 
@@ -93,7 +95,9 @@ Steps 1–6 need no Cloudflare account and no deployment — you can stop there 
    npx wrangler secret put DISCORD_TOKEN --env non-prod
    ```
 
-   Repeat with `--env production`, using the production application's values. `wrangler.jsonc` declares these names, so a deploy that is missing one fails and says which.
+   Repeat with `--env production`, using the production application's values. `wrangler.jsonc` declares these names, so a deploy that is missing one fails and says which. CI never sets them for you; this is a one-time manual step per environment.
+
+   Nothing has deployed yet, so neither Worker exists in your account. Wrangler offers to create each one as a placeholder to hold the secret; answer yes, and step 9's first deploy replaces the placeholder with your real code. These are separate from the `.dev.vars` values in step 5 — see [Where each value goes](docs/using-this-template.md#where-each-value-goes).
 
 9. **Turn on deployment.** 
 
