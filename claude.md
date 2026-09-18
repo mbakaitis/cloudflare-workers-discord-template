@@ -1,6 +1,6 @@
 # Cloudflare Workers Discord Bot Template Maintainer Guide
 
-**Instruction contract version:** 3.0.0
+**Instruction contract version:** 3.0.1
 
 This repository is the versioned boilerplate for a Discord bot on Cloudflare Workers. Its default application serves Discord HTTP interactions from a Worker and registers its own slash commands, so a new project starts from something that already works end to end. It must remain useful when copied into a new Worker project and must make future Cloudflare, Wrangler, Discord, and platform changes deliberate, testable, and documented.
 
@@ -112,6 +112,7 @@ This repository is an upstream template, not a remote package that can safely ov
 - Use a repeatable process (for example, `git cherry-pick` against a fetched `upstream` remote — see `docs/using-this-template.md`) and review the diff before applying upstream changes.
 - Add contract tests that protect the promises of the boilerplate. When an upstream change intentionally changes a promise, update the tests and migration notes together.
 - `claude-for-users.md`, `AGENTS-for-users.md`, and `.github/copilot-instructions-for-users.md` are the template's designated extension point for AI-tool guidance in a downstream project. Keep them free of template-maintenance-only content — no mission/scope, no instruction contract version, no upstream-adoption process — so a downstream project can rename them into place without translation.
+- Contract tests ship downstream, so a test that only passes in this repository's layout is a defect in the template. `test/contracts/instructions.test.js` is the worked example: it detects whether it is looking at the template's six instruction files or a project's renamed three, and applies the version contract only where it means something. Hold any new contract test to the same standard — assert the promise, not this checkout's file list.
 
 Do not promise automatic flow-down: no synchronization mechanism exists for either supported starting path (**Use this template** or clone). Downstream projects need human review because application code, bindings, security policy, and deployment topology are project-specific.
 

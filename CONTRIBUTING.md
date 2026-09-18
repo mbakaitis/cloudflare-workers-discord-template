@@ -119,6 +119,10 @@ If you change a requirement in one, update the other two in the same pull reques
 
 Each maintainer file has a downstream counterpart — `claude-for-users.md`, `AGENTS-for-users.md`, `.github/copilot-instructions-for-users.md` — written for an application built from the template rather than for maintaining it. They don't carry the instruction contract version, since a single application has no upstream file to stay in sync with. When a change to a maintainer file also affects what a downstream application should do (TDD, environment isolation, secrets handling, treating MCP results as research), mirror it into the matching `-for-users` file in the same pull request; when a change is specific to maintaining this template, it does not belong there. See [The instruction files](docs/using-ai.md#the-instruction-files) for the full breakdown of what belongs in each set.
 
+`test/contracts/instructions.test.js` enforces the mechanical half of that: all six files present, one identical Semantic Version across the maintainer three, and no version on the counterparts. It cannot tell whether the *content* was mirrored, so that part is still a review responsibility.
+
+The same test also has to pass in a downstream project that renamed the counterparts into place, where the version contract does not apply. So it detects which layout it is looking at rather than assuming this one — see `test/helpers/instruction-files.js`. If you change the file names or the version header, change that helper in the same pull request, and keep both layouts covered.
+
 ## Pull request expectations
 
 - CI passes.

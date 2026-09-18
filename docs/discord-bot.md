@@ -118,6 +118,8 @@ const response = await dispatchInteraction(
 
 **Declare `type`, `integration_types`, and `contexts` explicitly.** All three have Discord-side defaults. Declaring them makes where a command can be used a property of this repository, reviewable in a diff, instead of a consequence of how the Discord application happens to be configured. Note that Discord applies `integration_types` and `contexts` only to globally-scoped commands; a guild-scoped registration is already confined to its guild.
 
+The shipped definitions declare `BOT_DM` alongside `GUILD`, which assumes the application was installed with the optional `bot` scope — that context is the DM with the bot user, so there has to be one. Drop `BOT_DM` if you would rather install with `applications.commands` alone; see [Install the non-production application in your test server](using-this-template.md#install-the-non-production-application-in-your-test-server) for what each scope buys.
+
 **Do not trust an option, even a required one.** Discord enforces `required`, but a handler that assumes so throws on the first payload that disagrees — and a thrown handler is a failed interaction, which shows the user Discord's generic error notice and explains nothing. `/echo` reads its option defensively and answers a missing or blank one with an ephemeral message. Options arrive as an array of `{ name, type, value }`, so reading one is a lookup, not a property access.
 
 **Take a timer, a clock, or a network call as an argument.** A handler receives `sleep` for the same reason it receives `rest`: `/slow` needs to wait, and a handler that imports its own timer is a handler whose tests have to wait too. `/slow`'s tests inject a `sleep` they hold open and release by hand, so they assert ordering — acknowledged first, edited later — instead of racing it.
@@ -280,7 +282,7 @@ So a tunnel session proves the interaction contract — real signatures over a r
 
 ## Where the rest would attach
 
-This template serves HTTP interactions and stops. The obvious next features are deliberately absent, each because it needs its own documented purpose, local-development story, and test strategy before it belongs in a boilerplate. If you add one, here is where it lands:
+This template serves HTTP interactions and stops. The obvious next features are deliberately absent, each because it needs its own documented purpose, local-development story, and test strategy before it belongs in a boilerplate. If you add one, here is where it lands — and check whether it also widens the scopes or bot permissions your application must be installed with, because most of them do:
 
 | Feature | Where it attaches | What it drags in |
 | --- | --- | --- |
@@ -299,6 +301,7 @@ This template serves HTTP interactions and stops. The obvious next features are 
 - [Validating security headers](https://docs.discord.com/developers/interactions/overview#validating-security-headers) — the signature scheme `src/discord/verify.js` implements
 - [Application commands](https://docs.discord.com/developers/interactions/application-commands#application-command-object-application-command-structure) — the definition object, the naming rules, and the option structure
 - [Contexts](https://docs.discord.com/developers/interactions/application-commands#contexts) — what `integration_types` and `contexts` control
+- [Authorizing your application](https://docs.discord.com/developers/interactions/application-commands#authorizing-your-application) — why `applications.commands` alone is enough, and why no permission bitfield is needed
 - [Bulk overwrite global application commands](https://docs.discord.com/developers/interactions/application-commands#bulk-overwrite-global-application-commands) — the endpoint `npm run register:production` calls, the overwrite-everything warning, and the daily create limit
 - [Bulk overwrite guild application commands](https://docs.discord.com/developers/interactions/application-commands#bulk-overwrite-guild-application-commands) — the endpoint `npm run register:non-prod` calls
 - [Making a guild command](https://docs.discord.com/developers/interactions/application-commands#making-a-guild-command) — why guild scope is the one to test with: guild commands update instantly

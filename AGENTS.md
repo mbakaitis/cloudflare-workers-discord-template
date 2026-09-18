@@ -1,6 +1,6 @@
 # Agent Instructions
 
-**Instruction contract version:** 3.0.0
+**Instruction contract version:** 3.0.1
 
 Use [claude.md](claude.md) as the canonical maintenance guide for this Discord bot template for Cloudflare Workers.
 
@@ -29,5 +29,6 @@ Before editing, read the relevant section of `claude.md`. In particular:
 - VS Code may require MCP discovery to be enabled with `chat.mcp.discovery.enabled` when relying on other clients' configuration; the repository's `.vscode/mcp.json` is the preferred VS Code configuration.
 - GitHub Rulesets' metadata-restriction rules (e.g. `branch_name_pattern`) require GitHub Team or Enterprise and are rejected on Free/Pro regardless of repository visibility; this template enforces branch naming by review, not by ruleset.
 - Do not commit a GitHub Ruleset or branch-protection JSON payload as an applied artifact — imported payloads can save with fewer rules than declared depending on plan and org policy. Document exact settings for maintainers to configure by hand in `docs/using-this-template.md`, and keep contract tests limited to what a checkout can observe (e.g. the CI job named `test` still exists), never live GitHub settings.
+- Contract tests ship downstream, so one that only passes in this repository's layout is a template defect. `test/contracts/instructions.test.js` detects whether it is looking at the template's six instruction files or a project's renamed three, and applies the contract-version rule only where it applies.
 
 When the repository gains implementation files, follow its documented package scripts and report validation commands and any unavailable checks.

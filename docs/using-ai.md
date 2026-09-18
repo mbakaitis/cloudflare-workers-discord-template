@@ -46,6 +46,8 @@ mv .github/copilot-instructions-for-users.md .github/copilot-instructions.md
 
 This replaces the maintainer files outright rather than asking you to edit them down — a half-edited maintainer file is easy to leave half-finished, and it still carries the instruction-contract-version machinery you don't need. If you don't use AI tooling, delete all six files instead.
 
+`npm test` checks the outcome either way: the contract test works out which layout it is looking at, so it holds the template to the version contract and holds your project to *not* carrying one, and fails a swap that only happened for some of the three.
+
 From there, the files describe your project and your project alone. Edit them as your requirements change; there is no upstream sync to preserve.
 
 ## MCP servers
@@ -80,6 +82,7 @@ Instruction files are advisory. These are not.
 - The release workflow must keep its reviewed shape.
 - One Node.js version, declared in one place.
 - The coverage thresholds must exist and must be above zero.
+- The instruction files must form one coherent set — either the template's six, with a single agreed contract version across the maintainer three, or your project's after the swap, carrying no version at all. A half-finished swap fails.
 
 This is the layer that makes AI assistance safe here. An assistant that suggests pointing non-production at a production database does not produce a subtle bug for a reviewer to catch six weeks later — it produces a failing test, immediately, before anything is deployed. When a contract test fails, that is the system working.
 

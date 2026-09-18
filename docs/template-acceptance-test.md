@@ -37,9 +37,9 @@ Each phase names what it is proving, the document that drives it, and what count
 
 ### Phase 1 — Two Discord applications
 
-**Proves:** the two-application model is explained well enough to follow without cross-wiring it.
-**Do:** README step 1, which sends you to [Create your Discord applications](using-this-template.md#3-create-your-discord-applications).
-**Pass:** two applications exist, the non-production one is installed in your test server, and you have every value the docs ask for without having guessed which application a value belongs to.
+**Proves:** the two-application model is explained well enough to follow without cross-wiring it, and that the install step names the scopes and permissions instead of leaving you to choose.
+**Do:** README step 1, which sends you to [Create your Discord applications](using-this-template.md#3-create-your-discord-applications) and then [Install the non-production application in your test server](using-this-template.md#install-the-non-production-application-in-your-test-server).
+**Pass:** two applications exist, the non-production one is installed in your test server, and you have every value the docs ask for — without having guessed which application a value belongs to, or which scopes and bot permissions to check in the URL generator.
 
 ### Phase 2 — Repository and install
 
@@ -77,6 +77,7 @@ Each phase names what it is proving, the document that drives it, and what count
 **Proves:** the promise that a deploy names its missing secrets.
 **Do:** README step 8 / [Set them on each Worker](using-this-template.md#set-them-on-each-worker).
 **Pass:** deliberately leave one secret unset and attempt a real deploy of that environment. It should fail and say which. Then set it.
+**Also note:** this is the first step that needs a Cloudflare account, and the Workers do not exist yet, so Wrangler prompts to create each one as a placeholder. Confirm the docs prepared you for both — an unexpected auth wall, or two Workers appearing in the dashboard before you deployed anything, are exactly the kind of surprise this phase exists to catch.
 
 ### Phase 8 — First non-production deploy ⚠️ never run before
 
@@ -128,9 +129,13 @@ Keep the test guild and the non-production application if you plan to re-run thi
 
 Fill this in as you go. Severity: **blocker** (cannot proceed from the docs), **friction** (possible but annoying or ambiguous), **polish** (fine, could be better).
 
+Findings are being fixed on `feature/acceptance-testing-updates` as the run proceeds.
+
 | Phase | What happened | Doc gap or friction | Severity | Proposed fix |
 | --- | --- | --- | --- | --- |
-| | | | | |
+| 0 | Passed. | None. | — | — |
+| 1 | Applications created and installed via **OAuth2 > URL Generator**. | The docs said to build an install link but never said *which* scopes or bot permissions to select, so the choice fell to the reader — and the widely-copied answer (`bot` + `Send Messages`) grants more than this template needs. | Friction | **Fixed.** [Install the non-production application in your test server](using-this-template.md#install-the-non-production-application-in-your-test-server) now names the scopes (`applications.commands`, with `bot` optional and why), states that no bot permissions are needed and why, and says that the list is a property of *your* features once you add any. |
+| 2 | `npm test` failed straight after the documented instruction-file swap. | `test/contracts/instructions.test.js` asserted the template's own file layout, so every downstream project failed it on first run: the in-place files carry no contract version once swapped, and the `-for-users` counterparts are gone. A contract test that only passes upstream is worse than no test. | **Blocker** | **Fixed.** The audit now detects the layout (template / project / no AI files) and applies the matching rule, and additionally fails a *half*-finished swap, which nothing caught before. Logic in `test/helpers/instruction-files.js`, fixture-covered per layout. |
 
 Worth capturing separately, because they are hard to reconstruct afterwards:
 
