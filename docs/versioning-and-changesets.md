@@ -51,7 +51,7 @@ Review it before merging:
 - `npm run changeset:status`, `npm run lint`, and `npm test` pass.
 - The `package.json` and lockfile changes are limited to the version bump.
 
-Merging it runs `npm run version` (which applies the bumps and consumes the changeset files) and then `npm run release` (which creates the tag).
+Merging it runs `npm run version` (which applies the bumps, consumes the changeset files, and refreshes `package-lock.json`) and then `npm run release` (which creates the tag).
 
 ## Cutting a version manually
 
@@ -59,7 +59,7 @@ The workflow is the supported path. If you need to run it locally — for exampl
 
 ```sh
 npm run changeset:status   # what is pending
-npm run version            # apply bumps, update CHANGELOG.md, consume changesets
+npm run version            # apply bumps, update CHANGELOG.md and the lockfile, consume changesets
 npm run release            # create the Git tag
 ```
 
