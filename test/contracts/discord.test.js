@@ -11,7 +11,6 @@ const execFileAsync = promisify(execFile);
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 const wranglerConfigPath = new URL("../../wrangler.jsonc", import.meta.url);
 const gitignorePath = new URL("../../.gitignore", import.meta.url);
-const devVarsExamplePath = new URL("../../.dev.vars.example", import.meta.url);
 const deployWorkflowPath = new URL("../../.github/workflows/deploy.yml", import.meta.url);
 
 /**
@@ -192,7 +191,16 @@ describe("Discord secret declaration contract", () => {
     const config = await readWranglerConfig();
     const environments = Object.keys(config.env ?? {});
 
-    assert.deepEqual(environments.sort(), ["non-prod", "production"]);
+    // Both must exist; the set is deliberately not pinned, because a project
+    // built from this template may add a third environment. That this template
+    // itself ships exactly two is asserted in
+    // `discord.template-only.test.js`.
+    for (const name of ["non-prod", "production"]) {
+      assert.ok(
+        environments.includes(name),
+        `wrangler.jsonc must declare an env.${name} environment, got ${environments.join(", ")}`,
+      );
+    }
   });
 
   it("declares Discord secret names without any Discord value", async () => {
@@ -288,34 +296,9 @@ describe("local development secrets contract", () => {
     assert.equal(await isIgnored(".dev.vars.non-prod"), true);
     assert.equal(await isIgnored(".env"), true);
     assert.equal(await isIgnored(".env.production"), true);
+    // `git check-ignore` consults the patterns, not the filesystem, so this
+    // still holds after a project deletes `.dev.vars.example`.
     assert.equal(await isIgnored(".dev.vars.example"), false);
-  });
-
-  it("provides a placeholder-only .dev.vars.example covering every Discord variable", async () => {
-    const example = await readFile(devVarsExamplePath, "utf8");
-    const assignments = new Map(
-      example
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line && !line.startsWith("#"))
-        .map((line) => {
-          const [name, ...rest] = line.split("=");
-
-          return [name.trim(), rest.join("=").trim().replace(/^"|"$/g, "")];
-        }),
-    );
-
-    for (const name of [...requiredDiscordSecrets, "DISCORD_GUILD_ID"]) {
-      assert.ok(assignments.has(name), `.dev.vars.example must document ${name}`);
-    }
-
-    for (const [name, value] of assignments) {
-      assert.match(
-        value,
-        /replace-me/,
-        `.dev.vars.example must give ${name} an obvious placeholder, not ${value}`,
-      );
-    }
   });
 });
 

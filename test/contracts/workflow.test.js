@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const execFileAsync = promisify(execFile);
 
+const repositoryRoot = new URL("../../", import.meta.url);
 const deployWorkflowPath = new URL(
   "../../.github/workflows/deploy.yml",
   import.meta.url,
@@ -42,23 +43,58 @@ describe("deployment workflow contract", () => {
   });
 
   it("declares the same MCP servers in both config formats without credentials", async () => {
-    const expectedServers = {
-      "cloudflare-docs": "https://docs.mcp.cloudflare.com/mcp",
-      "discord-docs": "https://docs.discord.com/mcp",
-      github: "https://api.githubcopilot.com/mcp/",
-    };
+    /**
+     * Keys that would mean a credential reached a tracked configuration file.
+     *
+     * A remote MCP server is addressed by URL and authorized interactively, so
+     * none of these has a legitimate reason to appear here.
+     */
+    const credentialKeys = ["headers", "token", "apiKey", "api_key", "env", "command", "args"];
+
+    /** @type {Array<{ label: string, names: string[] }>} */
+    const declared = [];
 
     for (const configPath of mcpConfigPaths) {
+      const label = configPath.pathname.slice(repositoryRoot.pathname.length);
       const config = JSON.parse(await readFile(configPath, "utf8"));
       const servers = config.mcpServers ?? config.servers;
 
-      assert.deepEqual(Object.keys(servers).sort(), Object.keys(expectedServers).sort());
+      assert.ok(servers, `${label} must declare MCP servers`);
 
-      for (const [name, url] of Object.entries(expectedServers)) {
-        assert.equal(servers[name].type, "http");
-        assert.equal(servers[name].url, url);
-        assert.deepEqual(Object.keys(servers[name]).sort(), ["type", "url"]);
+      for (const [name, server] of Object.entries(servers)) {
+        for (const key of credentialKeys) {
+          assert.ok(
+            !(key in server),
+            `${label} gives ${name} a ${key} key; MCP configuration holds no credentials`,
+          );
+        }
+
+        // Exactly these two keys, so a future addition has to be reviewed here
+        // rather than arriving unnoticed alongside a URL change.
+        assert.deepEqual(
+          Object.keys(server).sort(),
+          ["type", "url"],
+          `${label} must declare ${name} as { type, url } only`,
+        );
+        assert.equal(server.type, "http", `${label} must declare ${name} as an http server`);
+        assert.match(server.url, /^https:\/\//, `${label} must give ${name} an https URL`);
       }
+
+      declared.push({ label, names: Object.keys(servers).sort() });
+    }
+
+    // Whatever the set is, the two files must agree: an assistant reading one
+    // and an editor reading the other would otherwise see different tooling.
+    const [first, ...rest] = declared;
+
+    assert.ok(first.names.length > 0, `${first.label} declares no MCP server`);
+
+    for (const other of rest) {
+      assert.deepEqual(
+        other.names,
+        first.names,
+        `${other.label} and ${first.label} declare different MCP servers`,
+      );
     }
   });
 
