@@ -76,6 +76,17 @@ This exemption disappears the moment the same change also touches code or config
 
 Keep tests deterministic: no live Cloudflare calls, no shared mutable state, no wall-clock dependence, no undeclared credentials.
 
+### Template-only contract tests
+
+Contract tests ship downstream, so a test that only passes in this repository's layout is a defect in the template — a project built from it would fail `npm test` on its first run through no fault of its own. Some assertions are still worth making about *this* checkout, though: that the template declares exactly two environments, that it wires up exactly the three documented MCP servers at their documented URLs, that `.dev.vars.example` holds nothing but placeholders.
+
+Those live in a file named `test/contracts/<subject>.template-only.test.js`, beside the shipped `<subject>.test.js` it was split from:
+
+- The `.template-only.test.js` suffix is matched by the existing `test/contracts/*.test.js` glob in the `test:contracts` script, so no `package.json` change is needed. Do not use a subdirectory instead — `node --test` against a directory applies its own default patterns, which also match non-test `.js` files under `test/`.
+- A project created from this template deletes these files whole. Nothing in a `.template-only.test.js` file may be imported by a sibling that ships, so repeat a small shared constant rather than exporting it from the template-only side.
+- When you split an assertion out, the shipped half must keep asserting the underlying promise in a relaxed form, not lose it. `workflow.test.js` no longer pins the MCP server list; it asserts that `.mcp.json` and `.vscode/mcp.json` declare the *same* set, that every entry is `{ type, url }`, and that no entry carries a credential-shaped key. `discord.test.js` no longer pins the environment set; it asserts that both a non-production and a production environment exist, leaving a project free to add a third.
+- Prove the relaxed form can still fail before you call the split done. Break the thing it guards, watch it go red, and revert. A guard nobody has seen fail is not a guard.
+
 ### Coverage is a ratchet
 
 `npm test` measures coverage over `src/` and `scripts/lib/` and fails when it drops below the thresholds in [vitest.config.js](vitest.config.js). The provider is Istanbul, not V8, because tests run inside `workerd` and V8 coverage does not work in the Workers pool.
@@ -119,9 +130,9 @@ If you change a requirement in one, update the other two in the same pull reques
 
 Each maintainer file has a downstream counterpart — `claude-for-users.md`, `AGENTS-for-users.md`, `.github/copilot-instructions-for-users.md` — written for an application built from the template rather than for maintaining it. They don't carry the instruction contract version, since a single application has no upstream file to stay in sync with. When a change to a maintainer file also affects what a downstream application should do (TDD, environment isolation, secrets handling, treating MCP results as research), mirror it into the matching `-for-users` file in the same pull request; when a change is specific to maintaining this template, it does not belong there. See [The instruction files](docs/using-ai.md#the-instruction-files) for the full breakdown of what belongs in each set.
 
-`test/contracts/instructions.test.js` enforces the mechanical half of that: all six files present, one identical Semantic Version across the maintainer three, and no version on the counterparts. It cannot tell whether the *content* was mirrored, so that part is still a review responsibility.
+`test/contracts/instructions.template-only.test.js` enforces the mechanical half of that: all six files present, one identical Semantic Version across the maintainer three, and no version on the counterparts. It cannot tell whether the *content* was mirrored, so that part is still a review responsibility.
 
-The same test also has to pass in a downstream project that renamed the counterparts into place, where the version contract does not apply. So it detects which layout it is looking at rather than assuming this one — see `test/helpers/instruction-files.js`. If you change the file names or the version header, change that helper in the same pull request, and keep both layouts covered.
+The audit it drives still detects which of the three layouts it is looking at — template, swapped project, or no AI files at all — and applies the matching rule, because a half-finished swap is the failure mode worth catching; see `test/helpers/instruction-files.js`. The test is [template-only](#template-only-contract-tests) because the contract version it enforces is the template's, and a project has no upstream file to stay in sync with. If you change the file names or the version header, change that helper in the same pull request, and keep every layout covered.
 
 ## Pull request expectations
 
