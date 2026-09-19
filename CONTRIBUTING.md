@@ -88,6 +88,17 @@ Those live in a file named `test/contracts/<subject>.template-only.test.js`, bes
 - Prove the relaxed form can still fail before you call the split done. Break the thing it guards, watch it go red, and revert. A guard nobody has seen fail is not a guard.
 - **Register it in [template-manifest.json](template-manifest.json).** A `.template-only.test.js` file that nobody added to the manifest's `prune` list ships to a project that cannot pass it. `test/contracts/manifest.template-only.test.js` reads `test/contracts/` and fails on any template-only file the manifest does not name, so this is enforced rather than remembered. The same rule applies to anything else added here that is template-only, not just tests.
 
+### The fresh-project acceptance check
+
+The template's central claim is that `npm run setup` turns a fresh copy into a project that is green with no manual edits. Two checks hold it, at two speeds, because the fast one cannot prove the claim and the slow one cannot live in the unit suite:
+
+- `test/contracts/setup-acceptance.template-only.test.js` runs in `npm test`. It builds a project from `git archive HEAD` into a temporary directory, runs setup there unattended, and asserts the *shape* of the result: nothing template-only left behind, every payload destination written, no unsubstituted `{{PLACEHOLDER}}`, no dangling relative link, no credential-shaped literal. It takes about half a second and it never installs anything.
+- `.github/workflows/template-acceptance.yml` is the slow half, and the only thing that proves "green". It does the same build in CI and then runs `npm ci`, `npm run lint`, and the full `npm test` inside the generated project. It is a separate workflow rather than a job in `ci.yml`: the branch-protection required status check is named `test` and that name must keep meaning the job in `ci.yml`, and this workflow spawns a script that deletes itself during setup, so the manifest prunes the whole file rather than cutting a job out of a surviving one.
+
+Because the fast check archives `HEAD`, a file added in your working tree is invisible to it until you commit. Commit before reading too much into a local pass; CI checks out the merge commit and sees everything.
+
+A change that adds an inbound link to `docs/using-this-template.md`, or a document to the `.template/` payload, will show up here first. That is the point â€” the alternative is a new project discovering it.
+
 ### Coverage is a ratchet
 
 `npm test` measures coverage over `src/` and `scripts/lib/` and fails when it drops below the thresholds in [vitest.config.js](vitest.config.js). The provider is Istanbul, not V8, because tests run inside `workerd` and V8 coverage does not work in the Workers pool.
@@ -162,7 +173,7 @@ The audit it drives still detects which of the three layouts it is looking at â€
 | `test/helpers/` | Test fixtures, including the Ed25519 interaction signer |
 | `test/contracts/` | Contract tests protecting the template's promises |
 | `docs/` | User-facing guides |
-| `.github/workflows/` | CI, deployment, and release |
+| `.github/workflows/` | CI, deployment, release, and the fresh-project acceptance run |
 | `.changeset/` | Pending release notes |
 | `wrangler.jsonc` | Worker names, compatibility date, environments, bindings |
 | `template-manifest.json` | What is template-only: the paths a new project prunes, the payload's destinations, the instruction-file pairs |
