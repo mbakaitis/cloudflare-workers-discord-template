@@ -1,5 +1,136 @@
 # Changelog
 
+## 0.3.0
+
+### Minor Changes
+
+- 1c108f3: Prove the setup claim: a fresh project is green with zero edits
+  
+  `npm run setup` promised to turn a copy of this template into a working project. Nothing checked that the result held together. Two checks now do, at two speeds.
+  
+  `test/contracts/setup-acceptance.template-only.test.js` runs inside `npm test`. It builds a project from `git archive HEAD` into a temporary directory, runs setup there unattended, and asserts the shape of what comes out: nothing template-only left behind, the changesets gone but their configuration kept, every `.template/` destination written with no `{{PLACEHOLDER}}` surviving, the package, lockfile and Workers renamed, provenance recorded and the `setup` script removed, the coverage thresholds at the floor, every relative Markdown link resolving, and no credential-shaped literal anywhere. It takes about half a second and installs nothing.
+  
+  `.github/workflows/template-acceptance.yml` is the half that proves "green". It does the same build in CI and then runs `npm ci`, `npm run lint`, and the full `npm test` inside the generated project. It is a separate workflow rather than a job in `ci.yml` so the required status check named `test` keeps meaning the job in `ci.yml`, and so `template-manifest.json` can prune the whole file — it spawns a script that deletes itself during setup.
+  
+  The list of paths a project must not inherit is written out in the test rather than read from the manifest. Deriving it from the manifest would make the two agree by construction, and an entry dropped from the manifest would then be dropped from the test with it.
+  
+  No action for downstream projects: both checks are template-only and are pruned by setup.
+- 87ad614: Add `npm run setup` — the one command that turns a copy of this template into a project.
+  
+  ```sh
+  npm run setup                                  # interactive
+  npm run setup -- --name acme-bot --yes         # unattended
+  npm run setup -- --name acme-bot --dry-run     # prints the plan, changes nothing
+  npm run setup -- --name acme-bot --ai delete   # remove the AI instruction files instead of swapping them
+  ```
+  
+  `scripts/setup.js` is a thin CLI over `scripts/lib/setup.js`, the same split `scripts/register-commands.js` uses: the script owns the filesystem, the clock, `git`, and the exit code, and every decision it makes is a pure function a test can reach. That is what makes a destructive one-shot script reviewable — a plan that deletes the wrong thing fails in a unit test rather than in somebody's new repository.
+  
+  The order of operations is the contract, and `planProjectSetup` builds it: copy the `.template/` payload with its placeholders filled in, apply the identity rewrites, swap or delete the six AI instruction files, copy `.dev.vars.example` to `.dev.vars` (never over an existing one), prune, record provenance and add the `upstream` remote, then delete the script, its library, its tests, and its npm script — last, because a script that deletes itself first cannot finish.
+  
+  Provenance goes in `package.json` under a `template` key: the upstream repository, the template version, the template commit, and the date. `buildProvenance` takes the clock as an argument, so the record is testable and the tests are deterministic.
+  
+  Refusals, each exiting non-zero with a message naming the problem: provenance already present (setup is a one-shot, and this one cannot be forced), a dirty working tree (`--force` covers it; a dry run is exempt, since it writes nothing), a slug Cloudflare would reject, an unattended run with no `--name`, an unrecognized argument, no `template-manifest.json`, and no terminal to confirm with and no `--yes`.
+  
+  `--dry-run` contacts nothing and writes nothing, asserted by spawning the real script with `fetch` replaced by a landmine. Nothing on any path prints a file's contents, so the `.dev.vars` the run creates is never echoed.
+  
+  Two fixes that a project would otherwise have hit on its first `npm test`:
+  
+  - `rewritePackageLock` now resets the lockfile's two versions along with its two names. `test/contracts/versioning.test.js` ships downstream and compares the lockfile against `package.json`, which setup resets to `0.0.0`.
+  - `test/contracts/discord.test.js`'s committed-secret scan skips a path the git index still carries but the working tree no longer has. That is exactly what a repository looks like between `npm run setup` and the commit that records it.
+- 5db3afc: Document `npm run setup` and `npm run setup:github`, and raise the instruction contract to **3.1.0**.
+  
+  The documentation set now describes setup as one command rather than a checklist. No document tells a reader to do something a script now does.
+  
+  - **`docs/using-this-template.md`** — step 1 ends in `npm run setup` instead of three `mv` commands, with a table of everything the run does and the two things it deliberately leaves alone. Step 2 explains what setup named and why rather than asking for a hand edit. "Run it locally" no longer copies `.dev.vars.example`, because setup already did and the example is pruned. Steps 5 and 6 lead with `npm run setup:github` and keep their tables as the reference for what it applies and how to check the readback. "Setup is complete when" now asks for the provenance record and a clean divergence report. Every heading is unchanged, so every inbound anchor still resolves.
+  - **`README.md`** — the quickstart is ten steps instead of eleven: cloning, installing, and setup are one step, and the separate renaming step is gone. Step 8 offers `npm run setup:github` before the by-hand walkthrough.
+  - **`docs/using-ai.md`** — the instruction-file swap is described in the past tense, as something setup did, and the guardrails section says plainly that no contract test can check live GitHub settings and that `setup:github`'s readback is the substitute. `.template/docs/using-ai.md` and `.template/README.md` carry the matching changes.
+  - **`docs/template-acceptance-test.md`** — Phase 3 is now `npm run setup` in a real *Use this template* repository followed by `npm test` and `npm run lint` with zero edits, which is the template's central claim and the one thing the archive-based checks cannot prove. Phase 6 covers `setup:github`'s readback, including the private-repository case where required reviewers do not save. The old manual-renaming phase is gone, so the count and every cross-reference are unchanged.
+  - **`CONTRIBUTING.md`** — a new section on `template-manifest.json` and `.template/` as template-owned surface: what belongs in each, why the payload is files rather than strings in a script, the standing rule that anything template-only must be registered in the manifest in the same change, and the converse — that `npm run setup:github` is permanent and must stay out of `prune` and `selfDelete`.
+  
+  **Instruction contract 3.1.0** — minor, because the additions are compatible and invalidate no existing project structure. `claude.md`, `AGENTS.md`, and `.github/copilot-instructions.md` all gain:
+  
+  - `template-manifest.json` and `.template/` in the required project shape, with the registration rule and the permanent-script exception.
+  - `npm run setup` and `npm run setup:github` in the environment and deployment scripts contract.
+  - A revised GitHub Rulesets stance. Applying with `npm run setup:github` and verifying the readback is now the documented path; committing a payload as an applied artifact is still forbidden; contract tests still never check live GitHub settings.
+  
+  Mirrored into `claude-for-users.md`, `AGENTS-for-users.md`, and `.github/copilot-instructions-for-users.md`: only the GitHub-settings rule, which a project still needs. The manifest and `.template/` are not mirrored — a project has already pruned them.
+  
+  **Migration for a project created from an earlier version of this template.** No action is required; you can ignore this release. Your project has no `template-manifest.json` and no setup script, and nothing here changes how your Worker, tests, or deploy workflow behave.
+  
+  If you would like the pruning anyway, `template-manifest.json` in this repository is the list of what to delete: its `prune` array names the files, `pruneGlobs` covers the pending changesets, `pruneDirectories` covers `.template/` itself, and `selfDelete` names the setup script and its npm script. Two things worth copying rather than deleting: `scripts/setup-github.js` with its library and tests, and a coverage floor in `vitest.config.js` your application can actually reach.
+- 5db3afc: Add `npm run setup:github` — apply the GitHub-side structure, then check what GitHub actually saved.
+  
+  ```sh
+  npm run setup:github -- --dry-run          # print every gh command, run none
+  npm run setup:github                       # apply, leaving deployment disabled
+  npm run setup:github -- --enable-deploy    # also set DEPLOY_ENABLED=true
+  ```
+  
+  It creates or updates the `non-prod` environment restricted to `develop`, the `production` environment restricted to `main` with required reviewers, and a `protected-branches` ruleset covering both branches with exactly the rules in `docs/using-this-template.md`, "Configure branch protection" — including the `test` required status check. `DEPLOY_ENABLED` is the deployment opt-in, so it is set only with `--enable-deploy` or an explicit yes at the prompt.
+  
+  Then it reads every one of those resources back and prints a comparison against what it asked for, naming each divergence and exiting non-zero if there is one. That readback is the reason this script exists rather than a committed ruleset payload: GitHub accepts a ruleset and stores whatever the plan tier, organization policy, and repository visibility allow, saying nothing about what it dropped. A `201` is not evidence. No `branch_name_pattern` rule is requested at all — it is a metadata-restriction rule type, rejected on Free and Pro regardless of visibility, so asking for it would guarantee a divergence on the plans most projects are on.
+  
+  It never sets a secret value. `gh secret list` returns names, so the report says which secret names exist per environment and names the missing ones, and calls out that `DISCORD_PUBLIC_KEY` is absent from CI on purpose — only the Worker verifies signatures, and it reads that from its own Cloudflare secret.
+  
+  `--dry-run` runs no `gh` at all, not even the preflight: `gh auth status` contacts GitHub, and "prints what it would do" has to mean it.
+  
+  Unlike `npm run setup`, this script is permanent. It is idempotent and it verifies rather than only applying, so re-running it is the supported way to re-check a repository's settings after a plan change, an organization policy change, or a visibility change. `template-manifest.json` therefore does not prune `scripts/setup-github.js`, `scripts/lib/setup-github.js`, or `test/contracts/setup-github.test.js`, and `test/contracts/setup-github.template-only.test.js` holds that decision as an assertion.
+  
+  Every decision lives in `scripts/lib/setup-github.js` — the `gh` argument lists, the payloads, and the diff between a requested configuration and a readback — so all of it is unit-tested offline at the repository's 100% coverage ratchet. The CLI wrapper is exercised as a spawned process against a `gh` of the test's own first on `PATH`, which proves both that a dry run invokes it zero times and that a readback missing a rule fails the run.
+  
+  No action for downstream projects created from an earlier version: the script is new, and a project can adopt it by copying `scripts/setup-github.js`, `scripts/lib/setup-github.js`, their two tests, and the `setup:github` package script.
+- c85b775: Add the project-identity transforms to `scripts/lib/setup.js`.
+  
+  These are the pure rewrites that turn this template's identity into a project's. Each one takes text in and returns text out, so `npm run setup` — which lands in a later change — can be tested without a repository to destroy:
+  
+  - `deriveWorkerNames` validates a project slug against Cloudflare's Worker naming rules (lowercase letters, digits, and dashes, no leading or trailing dash, and short enough that `<slug>-production` fits the 63-character `workers.dev` limit) and derives the three Worker names. The derived names satisfy `test/contracts/environment-isolation.test.js`, asserted directly rather than assumed.
+  - `rewriteWranglerNames` renames all three Workers in `wrangler.jsonc` as text, so the compatibility date, the observability block, and every `secrets.required` list survive byte for byte. It refuses to run if a name is missing, shared between environments, or appears somewhere it was not expected.
+  - `rewritePackageManifest` sets the name and description, resets the version to `0.0.0`, drops the `template` and `boilerplate` keywords, and removes the `setup` script. `author` and `license` are deliberately left alone; the CLI will warn about them instead.
+  - `rewritePackageLock` updates only the root name and `packages[""].name`, textually, rather than re-serializing a 190 kB file.
+  - `rewriteCoverageThresholds` lowers the ratchet in `vitest.config.js` to a floor of **80** across all four metrics and replaces the maintainer-facing ratchet comment with wording that fits a project. The provider stays `istanbul`, `thresholds.autoUpdate` stays absent, and the include patterns are untouched, so `test/contracts/coverage.test.js` still passes against the result. The template holds itself to 100% because it is three commands long; an application is not, and a first partially-covered feature that fails `npm test` teaches a new project to lower the number, which is the habit the ratchet exists to prevent.
+  - `substitutePlaceholders` fills in the `.template/` payload's `{{TOKEN}}` values and throws on a leftover token rather than shipping a README that greets its first reader with `{{PROJECT_NAME}}`.
+  - `rewriteTemplateLinks` points the surviving documents' relative setup-guide links at the upstream blob URL, anchors intact, and reports how many it rewrote.
+  - `removeInstructionContractSection` deletes `docs/versioning-and-changesets.md`'s "Two version numbers" section. A project's instruction files carry no contract version, so the section documents a number that does not exist — and it holds that document's last link to the pruned `CONTRIBUTING.md`.
+  
+  Every transform is idempotent, which is what makes a half-finished setup run safe to repeat. An anchor a rewrite keeps is required and its absence throws; an anchor a rewrite consumes is optional, because its absence is what a second run looks like.
+  
+  No behavior changes for anyone using the template today: nothing new runs, and no npm script was added.
+  
+  `test/contracts/setup-transforms.template-only.test.js` runs every transform against the repository's real files, so an upstream edit that moves an anchor fails here rather than in somebody's new project. It is template-only because it imports `scripts/lib/setup.js`, which setup deletes as its last act.
+- 8cf4c4c: Add `template-manifest.json`, the `.template/` payload, and the setup planner.
+  
+  `template-manifest.json` declares what belongs to the template rather than to a project built from it: the paths a new project prunes, the `.changeset/*.md` glob, the `.template` and `docs/images` directories, the three instruction-file pairs, the payload's copy destinations, and the files `npm run setup` will eventually delete along with itself. It is data, so it is reviewable in a diff rather than buried in a script.
+  
+  `.template/` holds the downstream replacements for the four documents written from the template's point of view — `README.md`, `CHANGELOG.md`, `docs/using-ai.md`, and `docs/using-this-template.md`, which becomes a provenance stub so the inbound links in the surviving guides still resolve — with `{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{TEMPLATE_REPOSITORY}}`, and `{{TEMPLATE_VERSION}}` tokens.
+  
+  `scripts/lib/setup.js` is the pure half: glob resolution, the instruction-file swap/delete/keep decision, and a planner that orders copies before deletions and the script's own removal last. It writes nothing and imports nothing from the filesystem.
+  
+  No behavior changes for anyone using the template today: nothing new runs, and no npm script was added. The setup CLI that applies the plan lands in a later change.
+  
+  Two new contract tests back the promises: `test/contracts/manifest.template-only.test.js` fails when the manifest names a path that no longer exists, when a `.template-only.test.js` file is missing from the prune list, when a payload file uses an undeclared placeholder, or when a payload document links to something setup deletes. `test/helpers/credential-shapes.js` now holds the credential patterns that `discord.test.js` defined inline, so both scans share one definition.
+- 9829c4c: Split the contract assertions that are true only of this template into `*.template-only.test.js` files, and relax the shipped ones to assert the promise rather than this checkout.
+  
+  Contract tests ship downstream, so a test that only passes in this repository's layout is a defect in the template: a project created from it fails `npm test` on its first run through no fault of its own. Three assertions were in that category — the MCP server list pinned to exactly three names and URLs, the Wrangler environment set pinned to exactly `non-prod` and `production`, and `.dev.vars.example` required to exist and to hold nothing but `replace-me` values. All three are still worth making about *this* repository, so none of them was deleted. They moved:
+  
+  - `test/contracts/instructions.template-only.test.js` — the whole of the former `test/contracts/instructions.test.js`, unchanged. The contract version it enforces is the template's, and a project that completed the instruction-file swap has no upstream file to stay in sync with. `test/helpers/instruction-files.js` stays where it is.
+  - `test/contracts/discord.template-only.test.js` — the `.dev.vars.example` placeholder case, and the exactness of the environment set.
+  - `test/contracts/workflow.template-only.test.js` — the three expected MCP server names and their exact URLs.
+  
+  **What ships keeps a real promise, in a weaker form.** `discord.test.js` now asserts that both a non-production and a production environment exist in `wrangler.jsonc` without pinning the set, so a project may add a third. `workflow.test.js` no longer knows which MCP servers there should be; it asserts that `.mcp.json` and `.vscode/mcp.json` declare the *same* set, whatever it is, that every entry is exactly `{ type: "http", url }` over `https://`, and that no entry carries a credential-shaped key — `headers`, `token`, `apiKey`, `api_key`, `env`, `command`, or `args`. That is the promise worth keeping: the two files agree, and neither holds a secret.
+  
+  Each relaxed case was shown to fail before it was accepted: adding a `headers` key to one server, declaring a server in only one of the two files, and dropping `env.production` from `wrangler.jsonc` each go red with a message naming the problem. The mirror cases were checked too — adding a third environment, or a fourth server to both files, passes the shipped test and fails the template-only one, which is exactly the line the split is meant to draw.
+  
+  **Naming, not foldering.** The `.template-only.test.js` suffix is already matched by the `test/contracts/*.test.js` glob in `test:contracts`, so `package.json` is untouched. A `template-only/` subdirectory would force `node --test` to recurse a directory, where its default patterns also pick up non-test `.js` files under `test/`. The suffix also makes pruning file-level, which is what a future setup script needs.
+  
+  Nothing here changes runtime behavior, and no threshold moved: `npm test` runs 69 Vitest cases and 54 contract cases across ten contract files, and `npm run lint` is clean.
+  
+  Migration for a downstream project adopting this change: cherry-pick it, then delete the three `.template-only.test.js` files and `test/helpers/instruction-files.js` from your copy — they assert things about the template, not about your application. If you had already edited `test/contracts/instructions.test.js` or deleted `.dev.vars.example` locally to get a green suite, this change makes those edits unnecessary; take the upstream files and drop your local patch.
+  
+  `claude.md`, `AGENTS.md`, and `.github/copilot-instructions.md` each cited `test/contracts/instructions.test.js` by path as the worked example of a downstream-safe contract test. That path no longer exists and the claim behind it no longer holds, so all three now point at the relaxed `workflow.test.js` and the `.template-only.test.js` split instead. The requirement itself is unchanged — assert the promise, not this checkout — so the instruction contract version stays at 3.0.1, and nothing was mirrored into the `-for-users` files, which carry no downstream-alignment section because a single application is not maintaining a template.
+  
+  `CONTRIBUTING.md` documents the convention: what belongs in a template-only file, that nothing in one may be imported by a sibling that ships, that the shipped half must keep the promise in relaxed form, and that a split is not done until the relaxed case has been seen to fail.
+
 ## 0.2.0
 
 ### Minor Changes
