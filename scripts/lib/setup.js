@@ -343,6 +343,16 @@ export const rewriteWranglerNames = (text, names) => {
 const TEMPLATE_KEYWORDS = new Set(["template", "boilerplate"]);
 
 /**
+ * The version a new project starts at.
+ *
+ * Shared by the manifest and the lockfile rewrites on purpose:
+ * `test/contracts/versioning.test.js` ships downstream and compares the two,
+ * so a rename that moved one and not the other would fail a new project's
+ * first `npm test`.
+ */
+export const PROJECT_INITIAL_VERSION = "0.0.0";
+
+/**
  * Give `package.json` the project's identity.
  *
  * `author` and `license` are deliberately left alone: reassigning a copyright
@@ -362,7 +372,7 @@ export const rewritePackageManifest = (text, { name, description }) => {
   manifest.description = description;
   // A project's history starts at zero; the template's version is recorded in
   // the provenance the CLI writes, not inherited as the project's own.
-  manifest.version = "0.0.0";
+  manifest.version = PROJECT_INITIAL_VERSION;
 
   if (Array.isArray(manifest.keywords)) {
     manifest.keywords = manifest.keywords.filter((keyword) =>
@@ -377,35 +387,56 @@ export const rewritePackageManifest = (text, { name, description }) => {
 /** The lockfile's root `name`, which is the only one at two-space indent. */
 const LOCK_ROOT_NAME = /^( {2}"name": ")[^"]*(")/m;
 
+/** The root `version`, the only one at two-space indent. */
+const LOCK_ROOT_VERSION = /^( {2}"version": ")[^"]*(")/m;
+
 /** The `packages[""]` entry's `name`, matched together with its key. */
 const LOCK_WORKSPACE_NAME = /^( {4}"": \{\n {6}"name": ")[^"]*(")/m;
 
 /**
- * Rename the project in `package-lock.json`.
+ * The `packages[""]` entry's `version`. Every dependency carries one at the
+ * same indentation, so this is anchored on the empty package key above it.
+ */
+const LOCK_WORKSPACE_VERSION = /^( {4}"": \{\n {6}"name": "[^"]*",\n {6}"version": ")[^"]*(")/m;
+
+/**
+ * Give `package-lock.json` the project's identity.
  *
  * Textual for the same reason as `wrangler.jsonc`, and more so: the lockfile
- * is npm's to format, and re-serializing a 190 kB file to change nine
+ * is npm's to format, and re-serializing a 190 kB file to change a dozen
  * characters would bury the change in churn. Only the root object and
- * `packages[""]` carry the project's own name; every other `name` in the file
- * belongs to a dependency.
+ * `packages[""]` carry the project's own name and version; every other `name`
+ * and `version` in the file belongs to a dependency.
+ *
+ * The version moves with the name because `test/contracts/versioning.test.js`
+ * ships downstream and asserts the lockfile and the manifest agree.
  *
  * @param {string} text The current `package-lock.json`.
- * @param {{ name: string }} project
+ * @param {{ name: string, version?: string }} project Version defaults to
+ *   {@link PROJECT_INITIAL_VERSION}, which is what `rewritePackageManifest`
+ *   writes.
  * @returns {string}
- * @throws {Error} When either name field is not where npm puts it.
+ * @throws {Error} When a field is not where npm puts it.
  */
-export const rewritePackageLock = (text, { name }) => {
-  const anchors = [["root", LOCK_ROOT_NAME], ["packages[\"\"]", LOCK_WORKSPACE_NAME]];
+export const rewritePackageLock = (text, { name, version = PROJECT_INITIAL_VERSION }) => {
+  const anchors = [
+    ["root name", LOCK_ROOT_NAME],
+    ["packages[\"\"] name", LOCK_WORKSPACE_NAME],
+    ["root version", LOCK_ROOT_VERSION],
+    ["packages[\"\"] version", LOCK_WORKSPACE_VERSION],
+  ];
 
   for (const [label, pattern] of anchors) {
     if (pattern.test(text) === false) {
-      throw new Error(`package-lock.json has no ${label} name field to rewrite`);
+      throw new Error(`package-lock.json has no ${label} field to rewrite`);
     }
   }
 
   return text
     .replace(LOCK_ROOT_NAME, `$1${name}$2`)
-    .replace(LOCK_WORKSPACE_NAME, `$1${name}$2`);
+    .replace(LOCK_WORKSPACE_NAME, `$1${name}$2`)
+    .replace(LOCK_ROOT_VERSION, `$1${version}$2`)
+    .replace(LOCK_WORKSPACE_VERSION, `$1${version}$2`);
 };
 
 /**
@@ -542,3 +573,473 @@ const TWO_VERSION_NUMBERS_SECTION = /^## Two version numbers\n[\s\S]*?\n(?=^## )
  */
 export const removeInstructionContractSection = (text) =>
   text.replace(TWO_VERSION_NUMBERS_SECTION, "");
+
+/*
+ * ---------------------------------------------------------------------------
+ * The run itself
+ *
+ * Arguments in, an ordered plan out, and the text of everything the CLI
+ * prints. `scripts/setup.js` supplies the filesystem, the clock, and `git`;
+ * every decision it makes is made here, where a test can reach it. The script
+ * runs once in a project's life and deletes itself afterwards, so there is no
+ * second chance to notice that it renamed the wrong file.
+ * ---------------------------------------------------------------------------
+ */
+
+/** How the command is invoked, quoted back in every argument error. */
+export const SETUP_USAGE = "usage: npm run setup -- [--name <slug>] [--description <text>] "
+  + "[--ai <swap|delete|keep>] [--yes] [--dry-run] [--force]";
+
+/** Arguments that stand alone, mapped to the field each one sets. */
+const SETUP_FLAGS = new Map([
+  ["--yes", "yes"],
+  ["-y", "yes"],
+  ["--dry-run", "dryRun"],
+  ["--force", "force"],
+  ["--help", "help"],
+]);
+
+/** Arguments that take the next argument as their value. */
+const SETUP_OPTIONS = new Map([
+  ["--name", "name"],
+  ["--description", "description"],
+  ["--ai", "instructionMode"],
+]);
+
+/**
+ * Parse the setup CLI's arguments.
+ *
+ * Nothing falls back to a default on a typo. The script renames a repository
+ * and deletes files once, so `--nam acme-bot` has to stop the run rather than
+ * quietly proceed to an interactive prompt.
+ *
+ * @param {string[]} argv Arguments without the node binary or script path.
+ * @returns {{
+ *   name: string | undefined,
+ *   description: string | undefined,
+ *   instructionMode: "swap" | "delete" | "keep",
+ *   yes: boolean,
+ *   dryRun: boolean,
+ *   force: boolean,
+ *   help: boolean,
+ * }}
+ * @throws {Error} On an unrecognized argument, an option with no value, or an
+ *   instruction mode `planInstructionFiles` could not honour.
+ */
+export const parseSetupArguments = (argv) => {
+  const parsed = {
+    name: undefined,
+    description: undefined,
+    instructionMode: "swap",
+    yes: false,
+    dryRun: false,
+    force: false,
+    help: false,
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    const flag = SETUP_FLAGS.get(argument);
+
+    if (flag !== undefined) {
+      parsed[flag] = true;
+      continue;
+    }
+
+    const option = SETUP_OPTIONS.get(argument);
+
+    if (option === undefined) {
+      throw new Error(`Unrecognized argument ${argument} — ${SETUP_USAGE}`);
+    }
+
+    const value = argv[index + 1];
+
+    if (value === undefined || SETUP_FLAGS.has(value) || SETUP_OPTIONS.has(value)) {
+      throw new Error(`${argument} needs a value — ${SETUP_USAGE}`);
+    }
+
+    parsed[option] = value;
+    index += 1;
+  }
+
+  if (INSTRUCTION_MODES.includes(parsed.instructionMode) === false) {
+    throw new Error(`--ai ${parsed.instructionMode} is not one of `
+      + `${INSTRUCTION_MODES.join(", ")} — ${SETUP_USAGE}`);
+  }
+
+  return parsed;
+};
+
+/**
+ * Why this run must not proceed.
+ *
+ * Two refusals, and they are not equivalent. Provenance in `package.json`
+ * means setup already ran: running again would prune a project's own work and
+ * cannot be forced. A dirty tree only means the run would not be reviewable,
+ * so `--force` covers it — and a dry run, which writes nothing, is not
+ * affected either way.
+ *
+ * @param {object} state
+ * @param {Record<string, unknown> | null | undefined} [state.provenance] The
+ *   `template` key of `package.json`, if it has one.
+ * @param {string[] | null | undefined} [state.dirtyFiles] Paths `git status`
+ *   reported, or `null` when the tree state could not be read at all.
+ * @param {boolean} [state.force]
+ * @param {boolean} [state.dryRun]
+ * @returns {string[]} One message per refusal; empty when the run may proceed.
+ */
+export const findSetupBlockers = ({ provenance, dirtyFiles, force = false, dryRun = false }) => {
+  const blockers = [];
+
+  if (provenance !== undefined && provenance !== null) {
+    blockers.push(
+      "package.json already carries a `template` provenance record, so npm run setup has "
+      + "already run in this project. Setup is a one-shot: running it again would prune work "
+      + "that is now yours.",
+    );
+  }
+
+  if (dryRun === false && force === false && dirtyFiles !== null && dirtyFiles !== undefined
+    && dirtyFiles.length > 0) {
+    blockers.push(
+      `The working tree has uncommitted changes (${dirtyFiles.slice(0, 5).join(", ")}`
+      + `${dirtyFiles.length > 5 ? ", …" : ""}). Setup rewrites and deletes a lot of files at `
+      + "once; commit or stash first so its diff is reviewable, or re-run with --force.",
+    );
+  }
+
+  return blockers;
+};
+
+/**
+ * Record where a project came from.
+ *
+ * Kept in `package.json` under `template` rather than in a new dotfile: a
+ * project reads its own manifest, and a provenance record nobody sees is a
+ * provenance record nobody checks before adopting an upstream change.
+ *
+ * @param {object} request
+ * @param {string} request.repository The upstream template's repository URL.
+ * @param {string} request.version The template version, from its `package.json`.
+ * @param {string} [request.commit] The template commit, when `git` could name one.
+ * @param {Date} request.now The clock, injected so the record is testable.
+ * @returns {{ repository: string, version: string, commit?: string, setupDate: string }}
+ * @throws {Error} When `now` is not a usable `Date`.
+ */
+export const buildProvenance = ({ repository, version, commit, now }) => {
+  if (now instanceof Date === false || Number.isNaN(now.getTime())) {
+    throw new Error("buildProvenance needs a clock: pass now as a Date.");
+  }
+
+  const recorded = typeof commit === "string" ? commit.trim() : "";
+
+  return {
+    repository,
+    version,
+    ...(recorded === "" ? {} : { commit: recorded }),
+    setupDate: now.toISOString().slice(0, "YYYY-MM-DD".length),
+  };
+};
+
+/**
+ * Write a provenance record into `package.json`.
+ *
+ * @param {string} text The current `package.json`.
+ * @param {ReturnType<typeof buildProvenance>} provenance
+ * @returns {string}
+ */
+export const recordProvenance = (text, provenance) => {
+  const manifest = JSON.parse(text);
+
+  manifest.template = provenance;
+
+  return `${JSON.stringify(manifest, null, 2)}\n`;
+};
+
+/**
+ * Remove one npm script from `package.json`.
+ *
+ * The manifest names the scripts that go with the files being deleted, so the
+ * removal is data rather than a hardcoded key.
+ *
+ * @param {string} text The current `package.json`.
+ * @param {string} name The script key to remove.
+ * @returns {string}
+ */
+export const removePackageScript = (text, name) => {
+  const manifest = JSON.parse(text);
+
+  delete manifest.scripts?.[name];
+
+  return `${JSON.stringify(manifest, null, 2)}\n`;
+};
+
+/** `package.json`, named once so the plan and the transforms agree. */
+export const PACKAGE_MANIFEST = "package.json";
+
+/** The tracked example, which setup copies and then prunes. */
+export const DEV_VARS_EXAMPLE = ".dev.vars.example";
+
+/** The local secrets file `wrangler dev` reads. Never tracked, never printed. */
+export const DEV_VARS = ".dev.vars";
+
+/** The remote a project fetches upstream changes from. */
+export const UPSTREAM_REMOTE = "upstream";
+
+/**
+ * Every file the run rewrites, and the transform that rewrites it.
+ *
+ * Order matters twice over. `docs/versioning-and-changesets.md` loses a
+ * section before its links are rewritten, because the section being removed
+ * contains one of them. And `docs/using-ai.md` is rewritten after the payload
+ * has replaced it, so the link pass reads the project's copy rather than the
+ * maintainer's.
+ */
+export const IDENTITY_REWRITES = [
+  { path: "wrangler.jsonc", transform: "worker-names" },
+  { path: PACKAGE_MANIFEST, transform: "package-identity" },
+  { path: "package-lock.json", transform: "package-lock-identity" },
+  { path: "vitest.config.js", transform: "coverage-floor" },
+  { path: "docs/versioning-and-changesets.md", transform: "instruction-contract-section" },
+  { path: "docs/discord-bot.md", transform: "template-links" },
+  { path: "docs/gitflow-and-branching.md", transform: "template-links" },
+  { path: "docs/using-ai.md", transform: "template-links" },
+  { path: "docs/versioning-and-changesets.md", transform: "template-links" },
+];
+
+/**
+ * The transforms a plan may name, keyed by the name it uses.
+ *
+ * A `Map` rather than an object literal so no `Object.prototype` key can pose
+ * as a transform.
+ */
+export const SETUP_TRANSFORMS = new Map([
+  ["worker-names", (text, { names }) => rewriteWranglerNames(text, names)],
+  ["package-identity", (text, { project }) => rewritePackageManifest(text, project)],
+  ["package-lock-identity", (text, { project }) => rewritePackageLock(text, project)],
+  ["coverage-floor", (text) => rewriteCoverageThresholds(text)],
+  ["template-links", (text, { upstream }) => rewriteTemplateLinks(text, upstream).text],
+  ["instruction-contract-section", (text) => removeInstructionContractSection(text)],
+  ["provenance", (text, { provenance }) => recordProvenance(text, provenance)],
+]);
+
+/**
+ * Apply one named transform.
+ *
+ * @param {string} name A key of {@link SETUP_TRANSFORMS}.
+ * @param {string} text The file's current contents.
+ * @param {{
+ *   names?: { base: string, nonProd: string, production: string },
+ *   project?: { name: string, description: string },
+ *   upstream?: { templateRepository: string },
+ *   provenance?: object,
+ * }} context Everything any transform needs, so the caller stays a switch-free
+ *   loop over the plan.
+ * @returns {string} The rewritten text.
+ * @throws {Error} On a name no transform answers to.
+ */
+export const applyTransform = (name, text, context) => {
+  const transform = SETUP_TRANSFORMS.get(name);
+
+  if (transform === undefined) {
+    throw new Error(`Unknown setup transform ${name}`);
+  }
+
+  return transform(text, context);
+};
+
+/**
+ * The whole run, in the order it has to happen.
+ *
+ * `planSetup` decides what the manifest implies; this adds what a project's
+ * identity implies and interleaves the two. The ordering is the contract:
+ *
+ * 1. copy the payload, so a replaced file holds its replacement;
+ * 2. rewrite the identity, before the files that carry it are pruned;
+ * 3. swap or delete the instruction files;
+ * 4. copy the local secrets example, before it is pruned;
+ * 5. prune;
+ * 6. record provenance, and add the upstream remote;
+ * 7. delete the setup script itself, last.
+ *
+ * @param {object} request
+ * @param {Record<string, any>} request.manifest The parsed `template-manifest.json`.
+ * @param {string[]} request.files Repository-relative paths that exist.
+ * @param {"swap" | "delete" | "keep"} [request.instructionMode]
+ * @param {boolean} [request.hasUpstreamRemote] When true, the remote is
+ *   reported and left alone rather than replaced.
+ * @returns {Array<Record<string, unknown>>}
+ */
+export const planProjectSetup = ({
+  manifest,
+  files,
+  instructionMode = "swap",
+  hasUpstreamRemote = false,
+}) => {
+  const present = new Set(files);
+  const base = planSetup({ manifest, files, instructionMode });
+  const isInstruction = (operation) =>
+    operation.kind === "move" || operation.reason === "instruction-files";
+  const isSelf = (operation) =>
+    operation.reason === "self-delete" || operation.kind === "remove-package-script";
+
+  return [
+    ...base.filter((operation) => operation.kind === "copy"),
+    ...IDENTITY_REWRITES
+      .filter(({ path }) => present.has(path))
+      .map(({ path, transform }) => ({ kind: "rewrite", path, transform })),
+    ...base.filter(isInstruction),
+    ...(present.has(DEV_VARS_EXAMPLE)
+      ? [{
+        kind: "copy-if-absent",
+        from: DEV_VARS_EXAMPLE,
+        to: DEV_VARS,
+        existing: present.has(DEV_VARS),
+      }]
+      : []),
+    ...base.filter((operation) =>
+      operation.kind !== "copy" && isInstruction(operation) === false && isSelf(operation) === false),
+    { kind: "rewrite", path: PACKAGE_MANIFEST, transform: "provenance" },
+    {
+      kind: "add-remote",
+      name: UPSTREAM_REMOTE,
+      url: `${manifest.templateRepository}.git`,
+      skip: hasUpstreamRemote,
+    },
+    ...base.filter(isSelf),
+  ];
+};
+
+/** How each kind of operation reads in the printed plan. */
+const OPERATION_DESCRIPTIONS = new Map([
+  ["copy", (operation) => `copy      ${operation.from} → ${operation.to}`],
+  ["copy-if-absent", (operation) =>
+    `copy      ${operation.from} → ${operation.to} (kept as it is if it already exists)`],
+  ["rewrite", (operation) => `rewrite   ${operation.path} (${operation.transform})`],
+  ["move", (operation) => `move      ${operation.from} → ${operation.to}`],
+  ["delete", (operation) => `delete    ${operation.path} (${operation.reason})`],
+  ["delete-directory", (operation) => `delete    ${operation.path}/ (directory)`],
+  ["add-remote", (operation) => operation.skip
+    ? `remote    ${operation.name} already exists, leaving it alone`
+    : `remote    ${operation.name} → ${operation.url}`],
+  ["remove-package-script", (operation) =>
+    `rewrite   ${PACKAGE_MANIFEST} (remove the ${operation.name} script)`],
+]);
+
+/**
+ * Render a plan for a human to approve.
+ *
+ * Paths only. No operation prints a file's contents, which is what keeps
+ * `.dev.vars` out of the output even though the run creates it.
+ *
+ * @param {Array<Record<string, unknown>>} plan
+ * @returns {string}
+ * @throws {Error} On an operation kind with no description, which would
+ *   otherwise be applied without appearing in what the reader approved.
+ */
+export const describeSetupPlan = (plan) => plan.map((operation) => {
+  const describe = OPERATION_DESCRIPTIONS.get(operation.kind);
+
+  if (describe === undefined) {
+    throw new Error(`Unknown setup operation ${operation.kind}`);
+  }
+
+  return describe(operation);
+}).join("\n");
+
+/**
+ * What setup could not do, printed after a successful run.
+ *
+ * Four of these need a human because they need credentials and a browser, and
+ * the fifth is a judgement setup has no business making: reassigning a
+ * copyright holder.
+ *
+ * @param {{ author?: string }} project The `author` field of `package.json`.
+ * @returns {string[]} Lines to print in order.
+ */
+export const describeRemainingWork = ({ author = "the template's author" }) => [
+  `LICENSE.md still carries ${author}'s copyright, and package.json still names them as the`,
+  "author. Both were left alone on purpose — what your project's license and authorship should",
+  "be is your call, not a setup script's.",
+  "",
+  "Four things only a human can do:",
+  "  1. Create two Discord applications, one for non-production and one for production, and",
+  "     note each one's public key, application ID, and bot token.",
+  "  2. Set those three secrets on each Worker: `npx wrangler secret put <NAME> --env non-prod`,",
+  "     then again with `--env production`. Never give a non-production Worker a production",
+  "     credential.",
+  "  3. Set the GitHub environment secret values. `npm run setup:github` creates the",
+  "     environments, the DEPLOY_ENABLED variable, and the branch ruleset, and reports which",
+  "     secret names are missing — it never sets a value.",
+  "  4. After the first deploy, paste each Worker's `https://.../interactions` URL into its own",
+  "     Discord application's Interactions Endpoint URL.",
+  "",
+  "See docs/discord-bot.md for what each secret is, and docs/using-this-template.md for the",
+  "provenance this run recorded.",
+];
+
+/**
+ * Where the CLI has to look to find out what exists.
+ *
+ * The plan is filtered against a listing of present files, and that listing is
+ * gathered from the manifest rather than from `git ls-files`: setup has to work
+ * the same in a **Use this template** repository, a clone, and an extracted
+ * archive, and a half-finished run leaves files git may still think are
+ * tracked.
+ *
+ * @param {Record<string, any>} manifest The parsed `template-manifest.json`.
+ * @returns {{
+ *   paths: string[],
+ *   directories: Array<{ path: string, recursive: boolean }>,
+ * }} Files to stat, and directories to read. Only a pruned directory is walked
+ *   recursively: a glob matches within one path segment, so reading its parent
+ *   shallowly is enough — and a glob with no slash at all resolves to `.`,
+ *   which must never start a recursive walk of the whole project.
+ */
+export const setupListingSources = (manifest) => {
+  const paths = new Set([
+    ...manifest.prune,
+    ...manifest.copy.flatMap(({ from, to }) => [from, to]),
+    ...manifest.instructionFiles.flatMap(({ maintainer, downstream }) => [maintainer, downstream]),
+    ...manifest.selfDelete.paths,
+    ...IDENTITY_REWRITES.map(({ path }) => path),
+    PACKAGE_MANIFEST,
+    DEV_VARS_EXAMPLE,
+    DEV_VARS,
+  ]);
+  const directories = new Map(
+    manifest.pruneGlobs.map((glob) => [
+      glob.includes("/") ? glob.slice(0, glob.lastIndexOf("/")) : ".",
+      false,
+    ]),
+  );
+
+  for (const directory of manifest.pruneDirectories) {
+    directories.set(directory, true);
+  }
+
+  return {
+    paths: [...paths],
+    directories: [...directories].map(([path, recursive]) => ({ path, recursive })),
+  };
+};
+
+/**
+ * The value for every placeholder the payload declares.
+ *
+ * The keys are the contract: `substitutePlaceholders` refuses to write a file
+ * with a token it has no value for, so a token added to `.template/` without a
+ * value here stops the run rather than shipping `{{PROJECT_NAME}}` to a
+ * project's first reader.
+ *
+ * @param {object} request
+ * @param {{ name: string, description: string }} request.project
+ * @param {{ repository: string, version: string }} request.upstream
+ * @returns {Record<string, string>}
+ */
+export const buildPlaceholderValues = ({ project, upstream }) => ({
+  PROJECT_NAME: project.name,
+  PROJECT_DESCRIPTION: project.description,
+  TEMPLATE_REPOSITORY: upstream.repository,
+  TEMPLATE_VERSION: upstream.version,
+});

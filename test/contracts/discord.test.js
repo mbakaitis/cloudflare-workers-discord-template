@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -137,15 +137,30 @@ function deployJobSteps(workflow) {
  * `git ls-files` rather than a directory walk: the scan is about what is
  * committed, so an ignored local `.dev.vars` is correctly invisible to it.
  *
+ * A path the index still carries but the working tree no longer has is
+ * skipped. That is what a repository looks like between a deletion and its
+ * commit — running `npm test` straight after `npm run setup` is the case that
+ * matters — and a file that is not there cannot be leaking a credential.
+ *
  * @returns {Promise<string[]>}
  */
 async function trackedTextFiles() {
   const { stdout } = await execFileAsync("git", ["ls-files", "-z"], { cwd: repositoryRoot });
-
-  return stdout
+  const tracked = stdout
     .split("\0")
     .filter(Boolean)
     .filter((file) => !binaryExtensions.some((extension) => file.endsWith(extension)));
+  const present = await Promise.all(tracked.map(async (file) => {
+    try {
+      await stat(join(repositoryRoot, file));
+
+      return file;
+    } catch {
+      return null;
+    }
+  }));
+
+  return present.filter((file) => file !== null);
 }
 
 describe("Discord secret declaration contract", () => {

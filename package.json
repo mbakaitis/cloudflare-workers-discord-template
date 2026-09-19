@@ -21,6 +21,7 @@
   },
   "scripts": {
     "dev": "wrangler dev",
+    "setup": "node scripts/setup.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "vitest run --coverage && npm run test:contracts",
