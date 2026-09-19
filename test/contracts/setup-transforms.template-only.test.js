@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import {
   COVERAGE_FLOOR,
+  PROJECT_INITIAL_VERSION,
   deriveWorkerNames,
   removeInstructionContractSection,
   rewriteCoverageThresholds,
@@ -154,20 +155,38 @@ describe("package identity rewrite", () => {
     assert.equal(rewritePackageManifest(once, project), once);
   });
 
-  it("rewrites both names in the real lockfile and nothing else", async () => {
+  it("changes four lines of the real lockfile and no others", async () => {
+    // The lockfile is npm's to format and holds a `name` and a `version` for
+    // every dependency. Exactly four lines may differ: the project's own two
+    // names and its own two versions.
     const original = await read("package-lock.json");
-    const rewritten = rewritePackageLock(original, { name: SLUG });
+    const lines = original.split("\n");
+    const rewritten = rewritePackageLock(original, { name: SLUG }).split("\n");
+    const changed = lines
+      .map((line, index) => [line, rewritten[index]])
+      .filter(([before, after]) => before !== after);
 
-    assert.equal(
-      rewritten.replaceAll(`"name": "${SLUG}"`, "\"name\": \"cloudflare-workers-discord-template\""),
-      original,
-      "the lockfile rewrite must touch only the two name fields",
-    );
+    assert.equal(rewritten.length, lines.length, "the rewrite must not add or remove a line");
+    assert.deepEqual(changed.map(([, after]) => after.trim()), [
+      `"name": "${SLUG}",`,
+      `"version": "${PROJECT_INITIAL_VERSION}",`,
+      `"name": "${SLUG}",`,
+      `"version": "${PROJECT_INITIAL_VERSION}",`,
+    ]);
+  });
 
-    const parsed = JSON.parse(rewritten);
-    assert.equal(parsed.name, SLUG);
-    assert.equal(parsed.packages[""].name, SLUG);
-    assert.equal(parsed.version, JSON.parse(original).version, "the lockfile version is npm's");
+  it("keeps the real lockfile and the real manifest agreeing on a version", async () => {
+    // test/contracts/versioning.test.js ships downstream and compares the two.
+    // A rename that left the template's version in the lockfile would fail a
+    // new project's first `npm test`.
+    const lock = JSON.parse(rewritePackageLock(await read("package-lock.json"), { name: SLUG }));
+    const manifestText = rewritePackageManifest(await read("package.json"), {
+      name: SLUG,
+      description: "Answers questions.",
+    });
+
+    assert.equal(lock.version, JSON.parse(manifestText).version);
+    assert.equal(lock.packages[""].version, JSON.parse(manifestText).version);
   });
 
   it("keeps the lockfile rewrite idempotent", async () => {

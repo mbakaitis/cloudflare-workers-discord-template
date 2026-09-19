@@ -20,7 +20,9 @@ There is no automatic sync. Fetch the template as a second remote, review the di
 ```sh
 git remote add upstream {{TEMPLATE_REPOSITORY}}.git   # setup did this if no upstream existed
 git fetch upstream
-git log --oneline {{TEMPLATE_VERSION}}..upstream/main
+git log --oneline upstream/main
 ```
+
+A repository created with **Use this template** shares no history with upstream, so there is no revision range to diff against. `package.json`'s `template.commit` records the upstream commit this project started from; everything after it in `git log upstream/main` is a candidate to cherry-pick.
 
 Application code, bindings, and deployment topology are yours; upstream cannot know about them, so every adoption is a reviewed change.

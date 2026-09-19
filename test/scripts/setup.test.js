@@ -1,17 +1,35 @@
 import { describe, expect, it } from "vitest";
 import {
   COVERAGE_FLOOR,
+  DEV_VARS,
+  DEV_VARS_EXAMPLE,
+  IDENTITY_REWRITES,
+  PACKAGE_MANIFEST,
+  PROJECT_INITIAL_VERSION,
   PROJECT_SLUG_MAX_LENGTH,
+  SETUP_TRANSFORMS,
+  SETUP_USAGE,
+  applyTransform,
+  buildPlaceholderValues,
+  buildProvenance,
+  describeRemainingWork,
+  describeSetupPlan,
   deriveWorkerNames,
+  findSetupBlockers,
+  parseSetupArguments,
   planInstructionFiles,
+  planProjectSetup,
   planSetup,
+  recordProvenance,
   removeInstructionContractSection,
+  removePackageScript,
   resolvePruneGlobs,
   rewriteCoverageThresholds,
   rewritePackageLock,
   rewritePackageManifest,
   rewriteTemplateLinks,
   rewriteWranglerNames,
+  setupListingSources,
   substitutePlaceholders,
 } from "../../scripts/lib/setup.js";
 
@@ -503,12 +521,35 @@ const lockFixture = `{
 `;
 
 describe("rewritePackageLock", () => {
-  it("updates the root name and the workspace name and nothing else", () => {
+  it("updates the root and workspace identity and nothing else", () => {
     const rewritten = rewritePackageLock(lockFixture, { name: "acme-bot" });
 
     expect(rewritten.match(/"name": "acme-bot"/g)).toHaveLength(2);
     expect(rewritten).toContain("\"name\": \"old-name-lookalike\"");
-    expect(rewritten.replaceAll("\"name\": \"acme-bot\"", "\"name\": \"old-name\"")).toBe(lockFixture);
+    expect(rewritten).toContain("\"version\": \"1.0.0\"");
+    expect(
+      rewritten
+        .replaceAll("\"name\": \"acme-bot\"", "\"name\": \"old-name\"")
+        .replaceAll(`"version": "${PROJECT_INITIAL_VERSION}"`, "\"version\": \"0.2.0\""),
+    ).toBe(lockFixture);
+  });
+
+  it("resets both versions to the one package.json starts at", () => {
+    // test/contracts/versioning.test.js ships downstream and compares the
+    // lockfile's two versions against package.json's. A rename that left the
+    // template's version behind would fail a new project's first `npm test`.
+    const parsed = JSON.parse(rewritePackageLock(lockFixture, { name: "acme-bot" }));
+
+    expect(parsed.version).toBe(PROJECT_INITIAL_VERSION);
+    expect(parsed.packages[""].version).toBe(PROJECT_INITIAL_VERSION);
+    expect(parsed.packages["node_modules/old-name-lookalike"].version).toBe("1.0.0");
+  });
+
+  it("accepts an explicit version", () => {
+    const rewritten = rewritePackageLock(lockFixture, { name: "acme-bot", version: "1.2.3" });
+
+    expect(JSON.parse(rewritten).version).toBe("1.2.3");
+    expect(JSON.parse(rewritten).packages[""].version).toBe("1.2.3");
   });
 
   it("is idempotent", () => {
@@ -522,6 +563,8 @@ describe("rewritePackageLock", () => {
       .toThrow(/root name/);
     expect(() => rewritePackageLock("{\n  \"name\": \"old-name\"\n}\n", { name: "acme-bot" }))
       .toThrow(/packages\[""\] name/);
+    expect(() => rewritePackageLock("{\n  \"name\": \"a\",\n  \"lockfileVersion\": 3\n}\n",
+      { name: "acme-bot" })).toThrow(/packages\[""\] name/);
   });
 });
 
@@ -693,5 +736,474 @@ describe("removeInstructionContractSection", () => {
     const once = removeInstructionContractSection(versioningFixture);
 
     expect(removeInstructionContractSection(once)).toBe(once);
+  });
+});
+
+describe("parseSetupArguments", () => {
+  it("defaults to an interactive run that swaps the instruction files", () => {
+    expect(parseSetupArguments([])).toEqual({
+      name: undefined,
+      description: undefined,
+      instructionMode: "swap",
+      yes: false,
+      dryRun: false,
+      force: false,
+      help: false,
+    });
+  });
+
+  it("reads a name, a description, and an instruction mode", () => {
+    const parsed = parseSetupArguments([
+      "--name", "acme-bot",
+      "--description", "Answers questions in chat.",
+      "--ai", "delete",
+      "--dry-run",
+      "--force",
+    ]);
+
+    expect(parsed).toEqual({
+      name: "acme-bot",
+      description: "Answers questions in chat.",
+      instructionMode: "delete",
+      yes: false,
+      dryRun: true,
+      force: true,
+      help: false,
+    });
+  });
+
+  it("accepts the short form of the confirmation flag", () => {
+    expect(parseSetupArguments(["-y"]).yes).toBe(true);
+    expect(parseSetupArguments(["--yes"]).yes).toBe(true);
+    expect(parseSetupArguments(["--help"]).help).toBe(true);
+  });
+
+  it("refuses an unrecognized argument rather than ignoring it", () => {
+    // A typo that silently becomes a default is a typo that renames the wrong
+    // thing, and this script only runs once.
+    expect(() => parseSetupArguments(["--nam", "acme-bot"])).toThrow(/--nam/);
+    expect(() => parseSetupArguments(["acme-bot"])).toThrow(/acme-bot/);
+  });
+
+  it("refuses an option with no value", () => {
+    expect(() => parseSetupArguments(["--name"])).toThrow(/--name needs a value/);
+    expect(() => parseSetupArguments(["--name", "--yes"])).toThrow(/--name needs a value/);
+  });
+
+  it("refuses an instruction mode it cannot honour", () => {
+    expect(() => parseSetupArguments(["--ai", "maybe"])).toThrow(/swap, delete, keep/);
+  });
+
+  it("states its own usage", () => {
+    expect(SETUP_USAGE).toContain("--name");
+    expect(SETUP_USAGE).toContain("--dry-run");
+  });
+});
+
+describe("findSetupBlockers", () => {
+  it("clears a clean checkout that has never been set up", () => {
+    expect(findSetupBlockers({ provenance: undefined, dirtyFiles: [] })).toEqual([]);
+  });
+
+  it("refuses to run twice", () => {
+    const blockers = findSetupBlockers({
+      provenance: { repository: "https://example.com/owner/repo", version: "0.2.0" },
+      dirtyFiles: [],
+    });
+
+    expect(blockers).toHaveLength(1);
+    expect(blockers[0]).toMatch(/already/i);
+    expect(blockers[0]).toContain("template");
+  });
+
+  it("refuses a dirty working tree and names the escape hatch", () => {
+    const blockers = findSetupBlockers({ provenance: null, dirtyFiles: ["src/index.js"] });
+
+    expect(blockers).toHaveLength(1);
+    expect(blockers[0]).toContain("--force");
+    expect(blockers[0]).toContain("src/index.js");
+  });
+
+  it("names the first few dirty files rather than all of them", () => {
+    const [blocker] = findSetupBlockers({
+      dirtyFiles: ["one.js", "two.js", "three.js", "four.js", "five.js", "six.js", "seven.js"],
+      provenance: undefined,
+    });
+
+    expect(blocker).toContain("one.js, two.js, three.js, four.js, five.js, …");
+    expect(blocker).not.toContain("seven.js");
+  });
+
+  it("runs on a dirty tree when told to", () => {
+    expect(findSetupBlockers({ dirtyFiles: ["src/index.js"], force: true })).toEqual([]);
+  });
+
+  it("ignores a dirty tree on a dry run, which writes nothing", () => {
+    expect(findSetupBlockers({ dirtyFiles: ["src/index.js"], dryRun: true })).toEqual([]);
+  });
+
+  it("tolerates a checkout whose tree state could not be read", () => {
+    // `git status` fails in a directory that is not a repository. That is not
+    // a reason to refuse; it is a reason not to claim the tree is clean.
+    expect(findSetupBlockers({ dirtyFiles: null })).toEqual([]);
+  });
+
+  it("reports both problems at once", () => {
+    expect(findSetupBlockers({
+      provenance: { version: "0.2.0" },
+      dirtyFiles: ["src/index.js"],
+    })).toHaveLength(2);
+  });
+});
+
+describe("buildProvenance", () => {
+  const clock = new Date("2026-09-18T14:30:00.000Z");
+  const upstream = { repository: "https://example.com/owner/repo", version: "0.2.0" };
+
+  it("records where a project came from, dated by the clock it was given", () => {
+    expect(buildProvenance({ ...upstream, commit: "abc1234", now: clock })).toEqual({
+      repository: upstream.repository,
+      version: upstream.version,
+      commit: "abc1234",
+      setupDate: "2026-09-18",
+    });
+  });
+
+  it("omits the commit when there is none to record", () => {
+    expect(buildProvenance({ ...upstream, now: clock }).commit).toBeUndefined();
+    expect(buildProvenance({ ...upstream, commit: "  ", now: clock }).commit).toBeUndefined();
+    expect(buildProvenance({ ...upstream, commit: " abc1234 ", now: clock }).commit)
+      .toBe("abc1234");
+  });
+
+  it("requires a clock, so no caller can make the record non-deterministic", () => {
+    expect(() => buildProvenance(upstream)).toThrow(/clock/);
+    expect(() => buildProvenance({ ...upstream, now: new Date("nonsense") })).toThrow(/clock/);
+  });
+});
+
+describe("recordProvenance", () => {
+  const provenance = { repository: "https://example.com/owner/repo", setupDate: "2026-09-18" };
+
+  it("adds the template key without disturbing the rest of the manifest", () => {
+    const recorded = JSON.parse(recordProvenance(packageFixture, provenance));
+
+    expect(recorded.template).toEqual(provenance);
+    expect(recorded.name).toBe(JSON.parse(packageFixture).name);
+    expect(Object.keys(recorded).at(-1)).toBe("template");
+  });
+
+  it("is idempotent", () => {
+    const once = recordProvenance(packageFixture, provenance);
+
+    expect(recordProvenance(once, provenance)).toBe(once);
+  });
+});
+
+describe("removePackageScript", () => {
+  it("removes one script and leaves the others", () => {
+    const manifestText = removePackageScript(packageFixture, "setup");
+    const scripts = JSON.parse(manifestText).scripts;
+
+    expect(scripts.setup).toBeUndefined();
+    expect(scripts).toEqual(
+      Object.fromEntries(
+        Object.entries(JSON.parse(packageFixture).scripts).filter(([key]) => key !== "setup"),
+      ),
+    );
+  });
+
+  it("tolerates a manifest with no scripts at all, and is idempotent", () => {
+    const bare = "{\n  \"name\": \"acme-bot\"\n}\n";
+
+    expect(removePackageScript(bare, "setup")).toBe(bare);
+    expect(removePackageScript(removePackageScript(packageFixture, "setup"), "setup"))
+      .toBe(removePackageScript(packageFixture, "setup"));
+  });
+});
+
+describe("applyTransform", () => {
+  const context = {
+    names: deriveWorkerNames("acme-bot"),
+    project: { name: "acme-bot", description: "Answers questions in chat." },
+    upstream: { templateRepository: "https://example.com/owner/repo" },
+    provenance: { repository: "https://example.com/owner/repo", setupDate: "2026-09-18" },
+  };
+
+  /** One case per transform the plan can name, with the file each one targets. */
+  const cases = [
+    ["worker-names", wranglerFixture, (text) => expect(text).toContain("\"acme-bot-production\"")],
+    ["package-identity", packageFixture, (text) =>
+      expect(JSON.parse(text).name).toBe("acme-bot")],
+    ["package-lock-identity", lockFixture, (text) =>
+      expect(JSON.parse(text).version).toBe(PROJECT_INITIAL_VERSION)],
+    ["coverage-floor", vitestFixture, (text) =>
+      expect(text).toContain(`branches: ${COVERAGE_FLOOR}`)],
+    ["template-links", "[a](using-this-template.md#x)", (text) =>
+      expect(text).toContain("https://example.com/owner/repo/blob/main/docs/")],
+    ["instruction-contract-section", versioningFixture, (text) =>
+      expect(text).not.toContain("## Two version numbers")],
+    ["provenance", packageFixture, (text) =>
+      expect(JSON.parse(text).template.setupDate).toBe("2026-09-18")],
+  ];
+
+  it("applies every transform the plan can name", () => {
+    for (const [name, text, assertion] of cases) {
+      assertion(applyTransform(name, text, context));
+    }
+
+    expect(cases.map(([name]) => name).sort()).toEqual([...SETUP_TRANSFORMS.keys()].sort());
+  });
+
+  it("refuses a transform it does not know", () => {
+    expect(() => applyTransform("reformat-everything", "", context))
+      .toThrow(/reformat-everything/);
+  });
+
+  it("names only transforms it can apply", () => {
+    // The plan is data; a rewrite entry naming a transform that does not exist
+    // would fail halfway through a one-shot script.
+    for (const { transform } of IDENTITY_REWRITES) {
+      expect(SETUP_TRANSFORMS.has(transform)).toBe(true);
+    }
+  });
+});
+
+/** The sample manifest, extended with the parts `planProjectSetup` reads. */
+const projectManifest = {
+  ...manifest,
+  templateRepository: "https://example.com/owner/repo",
+  prune: [...manifest.prune, DEV_VARS_EXAMPLE],
+};
+
+/** The sample listing, extended with the files the identity rewrites target. */
+const projectFiles = [
+  ...files,
+  DEV_VARS_EXAMPLE,
+  ...IDENTITY_REWRITES.map(({ path }) => path),
+];
+
+/**
+ * The index of the first operation matching a predicate, for order assertions.
+ *
+ * @param {Array<Record<string, unknown>>} plan
+ * @param {(operation: Record<string, unknown>) => boolean} predicate
+ * @returns {number}
+ */
+const positionOf = (plan, predicate) => plan.findIndex(predicate);
+
+describe("planProjectSetup", () => {
+  it("orders the whole run: copy, rewrite, swap, secrets, prune, provenance, remote, self", () => {
+    const plan = planProjectSetup({ manifest: projectManifest, files: projectFiles });
+    const copy = positionOf(plan, (operation) => operation.kind === "copy");
+    const rewrite = positionOf(plan, (operation) => operation.kind === "rewrite");
+    const swap = positionOf(plan, (operation) => operation.kind === "move");
+    const devVars = positionOf(plan, (operation) => operation.kind === "copy-if-absent");
+    const prune = positionOf(plan, (operation) => operation.reason === "prune");
+    const provenance = positionOf(plan, (operation) => operation.transform === "provenance");
+    const remote = positionOf(plan, (operation) => operation.kind === "add-remote");
+    const self = positionOf(plan, (operation) => operation.reason === "self-delete");
+
+    expect(copy).toBeGreaterThanOrEqual(0);
+    expect(rewrite).toBeGreaterThan(copy);
+    expect(swap).toBeGreaterThan(rewrite);
+    expect(devVars).toBeGreaterThan(swap);
+    expect(prune).toBeGreaterThan(devVars);
+    expect(provenance).toBeGreaterThan(prune);
+    expect(remote).toBeGreaterThan(provenance);
+    expect(self).toBeGreaterThan(remote);
+    expect(plan.at(-1).kind).toBe("remove-package-script");
+  });
+
+  it("copies the local secrets example before pruning it", () => {
+    const plan = planProjectSetup({ manifest: projectManifest, files: projectFiles });
+    const copied = positionOf(plan, (operation) => operation.kind === "copy-if-absent");
+    const pruned = positionOf(plan, (operation) =>
+      operation.kind === "delete" && operation.path === DEV_VARS_EXAMPLE);
+
+    expect(plan[copied]).toEqual({
+      kind: "copy-if-absent",
+      from: DEV_VARS_EXAMPLE,
+      to: DEV_VARS,
+      existing: false,
+    });
+    expect(pruned).toBeGreaterThan(copied);
+  });
+
+  it("marks a .dev.vars that is already there, so no local secret is overwritten", () => {
+    const plan = planProjectSetup({
+      manifest: projectManifest,
+      files: [...projectFiles, DEV_VARS],
+    });
+
+    expect(plan.find((operation) => operation.kind === "copy-if-absent").existing).toBe(true);
+  });
+
+  it("plans no secrets copy when the example is already gone", () => {
+    const plan = planProjectSetup({
+      manifest: projectManifest,
+      files: projectFiles.filter((file) => file !== DEV_VARS_EXAMPLE),
+    });
+
+    expect(plan.some((operation) => operation.kind === "copy-if-absent")).toBe(false);
+  });
+
+  it("leaves an upstream remote that already exists alone", () => {
+    const plan = planProjectSetup({
+      manifest: projectManifest,
+      files: projectFiles,
+      hasUpstreamRemote: true,
+    });
+
+    expect(plan.find((operation) => operation.kind === "add-remote")).toEqual({
+      kind: "add-remote",
+      name: "upstream",
+      url: `${projectManifest.templateRepository}.git`,
+      skip: true,
+    });
+  });
+
+  it("skips a rewrite whose file is not present", () => {
+    const plan = planProjectSetup({
+      manifest: projectManifest,
+      files: projectFiles.filter((file) => file !== "wrangler.jsonc"),
+    });
+
+    expect(plan.some((operation) => operation.path === "wrangler.jsonc")).toBe(false);
+    expect(plan.some((operation) => operation.transform === "coverage-floor")).toBe(true);
+  });
+
+  it("honours the instruction-file mode", () => {
+    const plan = planProjectSetup({
+      manifest: projectManifest,
+      files: projectFiles,
+      instructionMode: "keep",
+    });
+
+    expect(plan.some((operation) => operation.kind === "move")).toBe(false);
+  });
+
+  it("still plans the provenance and the rewrites after a half-finished run", () => {
+    // Everything prunable is gone but the identity was never rewritten: the
+    // second run has to plan the remaining work rather than throw.
+    const plan = planProjectSetup({
+      manifest: projectManifest,
+      files: [...IDENTITY_REWRITES.map(({ path }) => path), PACKAGE_MANIFEST],
+    });
+
+    expect(plan.some((operation) => operation.transform === "provenance")).toBe(true);
+    expect(plan.some((operation) => operation.kind === "delete")).toBe(false);
+  });
+});
+
+describe("describeSetupPlan", () => {
+  it("renders one line per operation, naming the file and the reason", () => {
+    const plan = planProjectSetup({ manifest: projectManifest, files: projectFiles });
+    const described = describeSetupPlan(plan);
+
+    expect(described.split("\n")).toHaveLength(plan.length);
+    expect(described).toContain(".template/README.md");
+    expect(described).toContain("(prune)");
+    expect(described).toContain(`${projectManifest.templateRepository}.git`);
+    expect(described).toContain(".template/");
+  });
+
+  it("never renders the contents of a file, only its path", () => {
+    const described = describeSetupPlan(planProjectSetup({
+      manifest: projectManifest,
+      files: projectFiles,
+    }));
+
+    expect(described).toContain(DEV_VARS);
+    expect(described.split("\n").every((line) => line.length < 200)).toBe(true);
+  });
+
+  it("says when the upstream remote is left alone", () => {
+    expect(describeSetupPlan([{ kind: "add-remote", name: "upstream", url: "x", skip: true }]))
+      .toMatch(/already exists/);
+  });
+
+  it("refuses an operation it cannot describe", () => {
+    expect(() => describeSetupPlan([{ kind: "reformat", path: "src/index.js" }]))
+      .toThrow(/reformat/);
+  });
+});
+
+describe("describeRemainingWork", () => {
+  it("names the author, the human-only steps, and the GitHub companion", () => {
+    const lines = describeRemainingWork({ author: "Ada Lovelace <ada@example.com>" }).join("\n");
+
+    expect(lines).toContain("Ada Lovelace");
+    expect(lines).toContain("LICENSE.md");
+    expect(lines).toContain("Discord application");
+    expect(lines).toContain("wrangler secret put");
+    expect(lines).toContain("Interactions Endpoint URL");
+    expect(lines).toContain("npm run setup:github");
+  });
+
+  it("says something sensible when the manifest names no author", () => {
+    expect(describeRemainingWork({}).join("\n")).toContain("LICENSE.md");
+  });
+
+  it("names no secret value", () => {
+    expect(describeRemainingWork({ author: "Ada" }).join("\n")).not.toMatch(/replace-me/);
+  });
+});
+
+describe("setupListingSources", () => {
+  it("collects every path an operation could touch", () => {
+    const { paths } = setupListingSources(projectManifest);
+
+    for (const path of [
+      ...projectManifest.prune,
+      ...projectManifest.copy.map((entry) => entry.from),
+      ...projectManifest.selfDelete.paths,
+      ...IDENTITY_REWRITES.map((entry) => entry.path),
+      DEV_VARS,
+      DEV_VARS_EXAMPLE,
+      PACKAGE_MANIFEST,
+    ]) {
+      expect(paths).toContain(path);
+    }
+
+    expect(new Set(paths).size).toBe(paths.length);
+  });
+
+  it("walks a pruned directory but only reads a glob's own directory", () => {
+    // A glob matches within one path segment, so its parent needs a shallow
+    // read — and a glob with no slash resolves to `.`, which must never start
+    // a recursive walk of the whole project.
+    const { directories } = setupListingSources({
+      ...projectManifest,
+      pruneGlobs: [".changeset/*.md", "*.tmp"],
+    });
+
+    expect(directories).toContainEqual({ path: ".changeset", recursive: false });
+    expect(directories).toContainEqual({ path: ".", recursive: false });
+    expect(directories).toContainEqual({ path: ".template", recursive: true });
+  });
+});
+
+describe("buildPlaceholderValues", () => {
+  it("supplies a value for every token the payload declares", () => {
+    expect(buildPlaceholderValues({
+      project: { name: "acme-bot", description: "Answers questions in chat." },
+      upstream: { repository: "https://example.com/owner/repo", version: "0.2.0" },
+    })).toEqual({
+      PROJECT_NAME: "acme-bot",
+      PROJECT_DESCRIPTION: "Answers questions in chat.",
+      TEMPLATE_REPOSITORY: "https://example.com/owner/repo",
+      TEMPLATE_VERSION: "0.2.0",
+    });
+  });
+
+  it("produces values a payload file can actually be substituted with", () => {
+    const values = buildPlaceholderValues({
+      project: { name: "acme-bot", description: "Answers questions in chat." },
+      upstream: { repository: "https://example.com/owner/repo", version: "0.2.0" },
+    });
+
+    expect(substitutePlaceholders("# {{PROJECT_NAME}} — {{TEMPLATE_VERSION}}", values))
+      .toBe("# acme-bot — 0.2.0");
   });
 });

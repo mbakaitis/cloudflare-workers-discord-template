@@ -6,7 +6,7 @@ import { join, dirname } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { credentialShapes } from "../helpers/credential-shapes.js";
-import { planSetup, resolvePruneGlobs } from "../../scripts/lib/setup.js";
+import { buildPlaceholderValues, planSetup, resolvePruneGlobs } from "../../scripts/lib/setup.js";
 
 /**
  * The `template-manifest.json` and `.template/` audit.
@@ -120,9 +120,7 @@ describe("template manifest contract", () => {
     ]);
     assert.deepEqual(manifest.selfDelete.packageScripts, ["setup"]);
 
-    // `scripts/setup.js` is the CLI, which lands in a later change; the two
-    // that exist today must exist, or the manifest is already stale.
-    for (const path of ["scripts/lib/setup.js", "test/scripts/setup.test.js"]) {
+    for (const path of manifest.selfDelete.paths) {
       assert.ok(await exists(path), `template-manifest.json names ${path}, which does not exist`);
     }
   });
@@ -179,6 +177,23 @@ describe("template payload contract", () => {
         used.has(token),
         `template-manifest.json declares {{${token}}}, which no payload file uses`,
       );
+    }
+  });
+
+  it("has a value for every placeholder it declares", async () => {
+    // The manifest declares the tokens and the setup script supplies them.
+    // A token added to one side and not the other either stops the run —
+    // `substitutePlaceholders` refuses a leftover — or leaves a value nothing
+    // uses, so the two lists are asserted equal rather than merely compatible.
+    const supplied = buildPlaceholderValues({
+      project: { name: "acme-bot", description: "Answers questions in chat." },
+      upstream: { repository: manifest.templateRepository, version: "0.0.0" },
+    });
+
+    assert.deepEqual(Object.keys(supplied).sort(), Object.keys(manifest.placeholders).sort());
+
+    for (const [token, value] of Object.entries(supplied)) {
+      assert.ok(typeof value === "string" && value.length > 0, `{{${token}}} has no value`);
     }
   });
 
