@@ -1,6 +1,6 @@
 {
   "name": "cloudflare-workers-discord-template",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Boilerplate template for a Discord bot on Cloudflare Workers",
   "private": true,
   "keywords": [
