@@ -34,19 +34,13 @@ The left column describes maintaining *this template* for many future projects: 
 
 The maintainer files carry an **instruction contract version** in their headers, separate from the package version, so a change to what this template requires is visible and reviewable rather than silent. See [Versioning and changesets](versioning-and-changesets.md#two-version-numbers). The `-for-users` files carry no such version — a single application has no upstream file to stay in sync with, so the concept doesn't apply once they're in place.
 
-### Switch to the downstream files
+### Switching to the downstream files
 
-Do this once, when you set up a new project from the template — see step 1 of [Using This Template](using-this-template.md#1-create-and-clone-your-repository):
+`npm run setup` did this for you, once, when you created your project — see step 1 of [Using This Template](using-this-template.md#1-create-and-clone-your-repository). It renamed `claude-for-users.md` to `claude.md`, `AGENTS-for-users.md` to `AGENTS.md`, and `.github/copilot-instructions-for-users.md` to `.github/copilot-instructions.md`, leaving three files rather than six. Running it with `--ai delete` removes all six instead; `--ai keep` leaves the decision for later.
 
-```sh
-mv claude-for-users.md claude.md
-mv AGENTS-for-users.md AGENTS.md
-mv .github/copilot-instructions-for-users.md .github/copilot-instructions.md
-```
+The files are replaced outright rather than edited down. A half-edited maintainer file is easy to leave half-finished, and it would still carry the instruction-contract-version machinery a single application has no use for. It is also why setup does all three renames or none: three is a coherent layout and six is a coherent layout, but two is a repository nobody can reason about.
 
-This replaces the maintainer files outright rather than asking you to edit them down — a half-edited maintainer file is easy to leave half-finished, and it still carries the instruction-contract-version machinery you don't need. If you don't use AI tooling, delete all six files instead.
-
-`npm test` checks the outcome either way: the contract test works out which layout it is looking at, so it holds the template to the version contract and holds your project to *not* carrying one, and fails a swap that only happened for some of the three.
+`npm test` checks the outcome either way. The contract test works out which of the three layouts it is looking at, holds the template to the version contract, holds a project to *not* carrying one, and fails a swap that only happened for some of the three.
 
 From there, the files describe your project and your project alone. Edit them as your requirements change; there is no upstream sync to preserve.
 
@@ -91,6 +85,8 @@ This is the layer that makes AI assistance safe here. An assistant that suggests
 It only moves one way. Raising a threshold is a hand-edit in a reviewed diff; lowering one to make a change pass is the thing the ratchet exists to prevent. If you ask an assistant for a feature and it comes back having relaxed a threshold, that is the finding, not the fix — and the contract test above means deleting the thresholds outright fails too.
 
 **Human gates** cover what tests cannot. Deployment is off until you set `DEPLOY_ENABLED`, production requires environment approval, protected branches require review, and Cloudflare credentials live in GitHub secrets that no local tool can read. Automation can open a pull request; it cannot ship to production.
+
+None of that is checked by a test, and it cannot be: a contract test reads a checkout, not GitHub's live settings. `npm run setup:github` is the substitute — it applies the environments, the branch ruleset, and the `DEPLOY_ENABLED` opt-in, then reads each one back and names anything GitHub did not save. Requesting a rule is not the same as having one, and it exits non-zero when the two differ.
 
 ## Working effectively
 

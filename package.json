@@ -22,6 +22,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "setup": "node scripts/setup.js",
+    "setup:github": "node scripts/setup-github.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "vitest run --coverage && npm run test:contracts",

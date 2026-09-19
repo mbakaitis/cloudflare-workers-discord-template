@@ -17,7 +17,7 @@ This is a GitHub template repository. Create your own project from it, copy the 
 
 ## Quickstart (via Template)
 
-Steps 1–6 need no Cloudflare account and no deployment — you can stop there and still have a bot you can develop and test. Steps 7–11 are what make it live.
+Steps 1–6 need no Cloudflare account and no deployment — you can stop there and still have a bot you can develop and test. Steps 7–10 are what make it live.
 
 1. **Create two Discord applications.** 
 
@@ -35,7 +35,7 @@ Steps 1–6 need no Cloudflare account and no deployment — you can stop there 
 
    Additional options exist - see [Choosing how to start](docs/using-this-template.md#0-choosing-how-to-start).
 
-3. **Clone it and install.** 
+3. **Clone it, install, and run setup.** 
 
    Clone the repository you *just* created, not this template repo.
 
@@ -43,30 +43,32 @@ Steps 1–6 need no Cloudflare account and no deployment — you can stop there 
    git clone https://github.com/YOUR-OWNER/YOUR-REPOSITORY.git
    cd YOUR-REPOSITORY
    npm install
+   npm run setup
    ```
 
-4. **Name your Workers.** 
+   `npm run setup` is the one command that turns the template into your project. It asks for a project slug, shows you the whole plan, and waits for you to confirm — run `npm run setup -- --dry-run` to see the plan and stop. It names the three Workers (`<slug>`, `<slug>-non-prod`, `<slug>-production`), renames the package, swaps the AI instruction files into place, creates your `.dev.vars`, drops the coverage ratchet to a project-appropriate floor, prunes the template's own scaffolding, records where your project came from, and then deletes itself.
 
-   Change the three `name` fields in [wrangler.jsonc](wrangler.jsonc) from `cloudflare-workers-discord-template` to your own project slug, keeping the `-non-prod` and `-production` suffixes. Update `name` in [package.json](package.json) to match.
+   It runs once and refuses to run twice. It leaves `LICENSE.md` and `package.json`'s `author` alone, and says so — those are yours to change. `npm run setup -- --ai delete` removes the AI instruction files instead of swapping them. See [Run `npm run setup`](docs/using-this-template.md#1-create-and-clone-your-repository) for the full list.
 
-5. **Run it locally.** 
+4. **Run it locally.** 
 
    No Cloudflare account is needed for development and testing.  You *will* need an account to deploy this to Cloudflare infrastructure.  
    
    You can work as long as you want on testing/dev or just to learn without doing that. But when you want it to go live? You need accounts.
 
+   Setup already created `.dev.vars` with a placeholder per name. Fill in your **non-production** application's values from step 1, then:
+
    ```sh
-   cp .dev.vars.example .dev.vars
    npm run dev
    ```
 
-   `.dev.vars` is untracked and holds your **non-production** application's values from step 1. Wrangler warns about any that are missing and starts anyway: `GET /` answers `OK`, and `POST /interactions` answers `401` for anything it cannot verify.
+   Wrangler warns about any value still unset and starts anyway: `GET /` answers `OK`, and `POST /interactions` answers `401` for anything it cannot verify.
 
-   `.dev.vars` is read by `wrangler dev` on this machine and nowhere else. It does not set the deployed Worker's secrets — that is step 8, and it is a separate copy of the same values.
+   `.dev.vars` is untracked, and it is read by `wrangler dev` on this machine and nowhere else. It does not set the deployed Worker's secrets — that is step 7, and it is a separate copy of the same values.
 
    Discord cannot reach `localhost`, so answering a real `/ping` from your machine needs a tunnel — see [Developing against a local tunnel](docs/discord-bot.md#developing-against-a-local-tunnel).
 
-6. **Confirm the guardrails still pass.** 
+5. **Confirm the guardrails still pass.** 
 
    The contract tests check that your two environments are distinct.
 
@@ -74,7 +76,7 @@ Steps 1–6 need no Cloudflare account and no deployment — you can stop there 
    npm test
    ```
 
-7. **Create the `develop` branch.** 
+6. **Create the `develop` branch.** 
 
    Feature work merges into `develop`; releases go out from `main`.
 
@@ -83,7 +85,7 @@ Steps 1–6 need no Cloudflare account and no deployment — you can stop there 
    git push -u origin develop
    ```
 
-8. **Set the Discord secrets on each Worker.** 
+7. **Set the Discord secrets on each Worker.** 
 
    *THIS* is where you need a Cloudflare account.  If you don't already have one, go get one. (Instructions for this are outside the scope of this repo.)
 
@@ -97,14 +99,24 @@ Steps 1–6 need no Cloudflare account and no deployment — you can stop there 
 
    Repeat with `--env production`, using the production application's values. `wrangler.jsonc` declares these names, so a deploy that is missing one fails and says which. CI never sets them for you; this is a one-time manual step per environment.
 
-   Nothing has deployed yet, so neither Worker exists in your account. Wrangler offers to create each one as a placeholder to hold the secret; answer yes, and step 9's first deploy replaces the placeholder with your real code. These are separate from the `.dev.vars` values in step 5 — see [Where each value goes](docs/using-this-template.md#where-each-value-goes).
+   Nothing has deployed yet, so neither Worker exists in your account. Wrangler offers to create each one as a placeholder to hold the secret; answer yes, and step 8's first deploy replaces the placeholder with your real code. These are separate from the `.dev.vars` values in step 4 — see [Where each value goes](docs/using-this-template.md#where-each-value-goes).
 
-9. **Turn on deployment.** 
+8. **Turn on deployment.** 
 
    With a working Cloudflare account:
    - Obtain your Cloudflare API token and account ID from your Cloudflare account.  *KEEP THESE SECRET!*
 
-   - In GitHub, under "Settings" in the top menu bar for the repo:
+   If you have the [GitHub CLI](https://cli.github.com) signed in, one command creates the environments, their branch restrictions, and the branch ruleset, then reads all of it back and reports anything GitHub did not save:
+
+   ```sh
+   npm run setup:github -- --dry-run   # print every gh command, run none
+   npm run setup:github                # apply, leaving deployment disabled
+   npm run setup:github -- --enable-deploy
+   ```
+
+   It never sets a secret **value** — it reports which secret *names* are missing. Add the values yourself, either in the web interface below or with `gh secret set`. Unlike `npm run setup`, this script stays in your project: re-running it is how you re-check these settings later.
+
+   To do all of it by hand instead — in GitHub, under "Settings" in the top menu bar for the repo:
       ![Settings menu header](docs/images/README-md-settings-menu-in-GitHub.png) 
 
       - open the "environments" from the side menu in Settings
@@ -144,15 +156,15 @@ Steps 1–6 need no Cloudflare account and no deployment — you can stop there 
                
    See [Configure GitHub environments and secrets](docs/using-this-template.md#5-configure-github-environments-and-secrets) for the exact token permission and the full trigger sequence.
 
-10. **Point each Discord application at its Worker.** 
+9. **Point each Discord application at its Worker.** 
 
     This step only works *after* a deploy, because Discord sends a signed `PING` to the URL when you save it and refuses one that does not answer correctly. Take the `https://...workers.dev` URL the deploy printed, add `/interactions`, and paste it into that application's **General Information > Interactions Endpoint URL**.
 
     Each application gets the URL of its **own** Worker: the non-production application points at `...-non-prod`, production at `...-production`. See [Point each Discord application at its Worker](docs/using-this-template.md#8-point-each-discord-application-at-its-worker).
 
-11. **Try the commands.** 
+10. **Try the commands.** 
 
-    The deploy already registered them, so invite the non-production bot to your test server and type `/` — `/ping`, `/echo`, and `/slow` should be listed, and now that step 10 is done, they answer.
+    The deploy already registered them, so invite the non-production bot to your test server and type `/` — `/ping`, `/echo`, and `/slow` should be listed, and now that step 9 is done, they answer.
 
     Guild-scoped commands appear instantly; global ones can take a moment to propagate. If you deployed by hand with `npm run deploy:*` instead of through the workflow, register by hand too with `npm run register:non-prod` or `npm run register:production`.
 
@@ -175,6 +187,7 @@ While this quick-start is helpful, we suggest if you also take a moment to read 
 | `npm run register:dry-run` | Print the command-registration plan without contacting Discord |
 | `npm run register:non-prod` | Register the commands with the non-production Discord application, scoped to one guild |
 | `npm run register:production` | Register the commands globally with the production Discord application |
+| `npm run setup:github` | Apply and verify the GitHub environments, deployment variable, and branch ruleset |
 
 The `register:*` scripts need `DISCORD_TOKEN`, `DISCORD_APPLICATION_ID`, and — for the guild-scoped one — `DISCORD_GUILD_ID`, each belonging to that environment's own Discord application. [The Discord bot](docs/discord-bot.md#registering-commands) covers where each value comes from, why registering is a separate act from deploying, and what the bulk-overwrite endpoint replaces.
 

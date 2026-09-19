@@ -1,6 +1,6 @@
 # Discord Bot Project Guide
 
-This file guides AI coding tools working in this repository. It started as `claude-for-users.md` in the `cloudflare-workers-discord-template` starter kit and was renamed to `claude.md` when this project was set up — see [Using This Template](docs/using-this-template.md) if that step hasn't happened yet.
+This file guides AI coding tools working in this repository. It started as `claude-for-users.md` in the `cloudflare-workers-discord-template` starter kit, and `npm run setup` renamed it to `claude.md` when this project was created — see [Project provenance](docs/using-this-template.md) for where the project came from.
 
 Unlike the template it came from, this file describes *your application*, not a boilerplate meant for many future projects. There is no instruction-contract version to track and no upstream file to stay in sync with — edit it freely as your project's needs change. A contract test in `npm test` expects that: it fails if one of these files starts declaring a contract version again, or if only some of the three were renamed into place.
 
@@ -17,6 +17,14 @@ Unlike the template it came from, this file describes *your application*, not a 
 - Local and non-production must never point at production data stores, queues, buckets, or other stateful resources by default.
 - Supply secrets through Cloudflare's secret mechanisms or CI secret storage only. Never commit them to source, `.env` files, or `.dev.vars`.
 - Keep deployment behind an explicit opt-in and require review before anything reaches production.
+
+## GitHub repository settings
+
+- Apply the deployment environments, the `DEPLOY_ENABLED` variable, and the branch ruleset with `npm run setup:github`, and read its verification report. The script is idempotent, so re-running it after a plan change, an organization policy change, or a visibility change is how you re-check what is actually enforced. `--dry-run` prints every `gh` command and runs none.
+- **Requesting a rule is not the same as having one.** GitHub accepts a ruleset and then stores whatever the plan tier, organization policy, and repository visibility allow, without saying what it dropped — environment required reviewers and the metadata-restriction rule types are the usual casualties. Never treat a successful API response as proof; the readback is the evidence.
+- Do not commit a GitHub Ruleset or branch-protection JSON payload to the repository as if it were the applied state. It can silently stop matching what GitHub enforces, and a file that looks authoritative and is not is worse than no file.
+- No contract test may check live GitHub settings or contact GitHub. Tests verify what a checkout can observe — that the CI job a required status check depends on still exists under the same name, and that a requested configuration diffs correctly against a fixture readback.
+- `npm run setup:github` never sets a secret value. It reports which secret *names* exist per environment and names the missing ones; the values are set by a human. `DISCORD_PUBLIC_KEY` is deliberately absent from CI, because only the Worker verifies signatures and it reads that from its own Cloudflare secret.
 
 ## Discord interactions and commands
 

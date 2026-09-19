@@ -71,6 +71,8 @@ It should only move one way. Raising a threshold is a hand-edit in a reviewed di
 
 **Human gates** cover what tests cannot. Deployment is off until you set `DEPLOY_ENABLED`, production requires environment approval, protected branches require review, and Cloudflare credentials live in GitHub secrets that no local tool can read. Automation can open a pull request; it cannot ship to production.
 
+None of that is checked by a test, and it cannot be: a contract test reads a checkout, not GitHub's live settings. `npm run setup:github` is the substitute — it applies the environments, the branch ruleset, and the `DEPLOY_ENABLED` opt-in, then reads each one back and names anything GitHub did not save. Requesting a rule is not the same as having one, and it exits non-zero when the two differ.
+
 ## Working effectively
 
 **Test-driven development is the requirement, and it is also what makes AI-assisted changes reviewable.** Write the failing test first, then the change. A test that failed before and passes after is evidence. A confident explanation is not. This is also the honest reason this project skips TypeScript: tests catch the mistakes that matter, in the runtime the code actually runs in.

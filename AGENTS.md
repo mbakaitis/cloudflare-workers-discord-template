@@ -1,6 +1,6 @@
 # Agent Instructions
 
-**Instruction contract version:** 3.0.1
+**Instruction contract version:** 3.1.0
 
 Use [claude.md](claude.md) as the canonical maintenance guide for this Discord bot template for Cloudflare Workers.
 
@@ -15,6 +15,8 @@ Before editing, read the relevant section of `claude.md`. In particular:
 - Keep one Discord application per environment: `DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`, and `DISCORD_TOKEN` are per-environment secrets, and a non-production Worker never holds production Discord credentials.
 - Never log interaction payloads, interaction tokens, or bot tokens — not in error handlers, not behind a debug flag, not in a committed fixture.
 - Treat the command registration script and its npm scripts (`register:non-prod`, `register:production`, `register:dry-run`) as template-owned contract surface: unit-tested logic, a dry-run that contacts nothing, and no credential in any output path.
+- Treat `npm run setup` and `npm run setup:github` as template-owned contract surface too. `setup` is a one-shot that renames, swaps the instruction files, prunes what the manifest names, records provenance, and deletes itself; it refuses a second run or a dirty tree and never echoes `.dev.vars`. `setup:github` is permanent and idempotent: it applies the environments, the `DEPLOY_ENABLED` variable, and the branch ruleset, then reads each back and exits non-zero on a divergence. It sets no secret value, and its `--dry-run` runs no `gh` at all.
+- Keep `template-manifest.json` and the `.template/` payload current: the manifest is declarative data (prune paths and globs, copy destinations, instruction-file pairs, placeholders, self-delete list) and `.template/` holds the downstream replacement documents. Anything template-only added to this repository must be registered in the manifest in the same change; a permanent script such as `npm run setup:github` must stay out of `prune` and `selfDelete`.
 - Use the Cloudflare documentation MCP server configured in `.mcp.json` or `.vscode/mcp.json` for current platform research when it is available; do not treat MCP access as deployment or account authorization. Confirm Discord interaction, command, and registration behavior against Discord's official documentation and cite it rather than working from recall.
 - Use mandatory red-green-refactor TDD for behavior changes, add regression tests, and run focused tests before broader checks. Keep implementation and tooling in JavaScript with mandatory JSDoc for exported functions, Worker handlers, configuration contracts, and non-obvious behavior; do not add TypeScript.
 - Treat the `istanbul` coverage thresholds in `vitest.config.js` as a one-way ratchet over `src/` and `scripts/lib/`: raise them by hand when a change measures higher, never lower one to make a change pass, and do not enable `thresholds.autoUpdate`.
@@ -27,8 +29,8 @@ Before editing, read the relevant section of `claude.md`. In particular:
 - Never commit credentials, secret values, `.dev.vars`, populated `.env` files, or generated deployment state.
 - Keep `.claude/settings.local.json` local and permission-scoped; do not broaden MCP permissions or add secrets to shared configuration.
 - VS Code may require MCP discovery to be enabled with `chat.mcp.discovery.enabled` when relying on other clients' configuration; the repository's `.vscode/mcp.json` is the preferred VS Code configuration.
-- GitHub Rulesets' metadata-restriction rules (e.g. `branch_name_pattern`) require GitHub Team or Enterprise and are rejected on Free/Pro regardless of repository visibility; this template enforces branch naming by review, not by ruleset.
-- Do not commit a GitHub Ruleset or branch-protection JSON payload as an applied artifact — imported payloads can save with fewer rules than declared depending on plan and org policy. Document exact settings for maintainers to configure by hand in `docs/using-this-template.md`, and keep contract tests limited to what a checkout can observe (e.g. the CI job named `test` still exists), never live GitHub settings.
+- GitHub Rulesets' metadata-restriction rules (e.g. `branch_name_pattern`) require GitHub Team or Enterprise and are rejected on Free/Pro regardless of repository visibility; this template does not request them and enforces branch naming by review.
+- Apply the ruleset with `npm run setup:github` and verify its readback — GitHub can save fewer rules than a payload declares, depending on plan tier, org policy, and repository visibility, and says nothing when it does. Still never commit a Ruleset or branch-protection JSON payload as an applied artifact; document the settings as a table in `docs/using-this-template.md` and let the script build and verify the payload. Contract tests never check live GitHub settings — only what a checkout can observe (e.g. the CI job named `test` still exists) and fixture-driven diffs.
 - Contract tests ship downstream, so one that only passes in this repository's layout is a template defect. Either relax the shipped assertion to the promise — `test/contracts/workflow.test.js` asserts the two MCP configuration files agree and hold no credential, not which servers they name — or split the checkout-specific half into a `test/contracts/*.template-only.test.js` file a project deletes whole. Nothing in a template-only file may be imported by a sibling that ships; see `CONTRIBUTING.md`.
 
 When the repository gains implementation files, follow its documented package scripts and report validation commands and any unavailable checks.

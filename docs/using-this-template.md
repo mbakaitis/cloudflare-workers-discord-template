@@ -52,23 +52,40 @@ Replace `acme/acme-weather-api` with what you actually created. The `cd` command
 
 Keep the `.github/`, `docs/`, `src/`, `test/`, `package.json`, and `wrangler.jsonc` files unless your project has a deliberate alternative.
 
-### Replace the AI instruction files
+### Run `npm run setup`
 
-If you use an AI coding tool, replace the template's maintainer-facing instruction files with the application-facing ones shipped alongside them — the maintainer versions describe keeping this boilerplate up to date for many future projects, which no longer applies once you're building on top of it:
+One command turns the template into your project:
 
 ```sh
-mv claude-for-users.md claude.md
-mv AGENTS-for-users.md AGENTS.md
-mv .github/copilot-instructions-for-users.md .github/copilot-instructions.md
+npm run setup
 ```
 
-If you don't use AI tooling, delete all six files instead. See [Using AI With This Template](using-ai.md#the-instruction-files) for what each file is for.
+It asks for a project slug and a one-line description, prints everything it is about to do, and waits for you to confirm. Use `npm run setup -- --dry-run` to see the plan and stop there, or `npm run setup -- --name acme-weather-api --yes` to run it unattended. The bare `--` is npm's separator between its own arguments and the script's; leave it out and npm keeps the flag for itself.
 
-Do all three moves, or none of them. A contract test in `npm test` checks the result, and it accepts either finished state — the template's layout, or yours after the swap — while failing a half-finished one, which is the easy mistake to make and an awkward one to notice later.
+| What it does | Detail |
+| --- | --- |
+| Names your Workers | The three `name` values in `wrangler.jsonc` become `<slug>`, `<slug>-non-prod`, and `<slug>-production` — [step 2](#2-name-your-workers) explains what each one is for |
+| Renames the package | `name` and `description` in `package.json` and `package-lock.json`, with the version reset to `0.0.0` |
+| Swaps the AI instruction files | `claude-for-users.md` becomes `claude.md`, and likewise for `AGENTS.md` and `.github/copilot-instructions.md`. Pass `--ai delete` to remove all six instead, or `--ai keep` to decide later |
+| Creates `.dev.vars` | Copied from `.dev.vars.example`, never overwriting one you already have. Setup prints paths, never contents |
+| Lowers the coverage ratchet | From the template's 100% to a floor of 80% across all four metrics — a reasonable starting point for an application, and still a ratchet |
+| Replaces the template-framed documents | This guide, `README.md`, `docs/using-ai.md`, and `CHANGELOG.md` become versions written for your project |
+| Prunes the template's scaffolding | `CONTRIBUTING.md`, the template's changelog and pending changesets, the template-only contract tests, and `template-manifest.json` |
+| Records provenance | A `template` key in `package.json` naming the upstream repository, version, commit, and setup date |
+| Adds the `upstream` remote | Unless one already exists — see [Keeping up with upstream changes](#10-keeping-up-with-upstream-changes) |
+| Deletes itself | `scripts/setup.js`, its library, its tests, and the `setup` npm script, as its last act |
+
+Setup is a one-shot. It refuses to run where provenance already exists, and refuses a dirty working tree unless you pass `--force`, so run it on a clean checkout straight after `npm install` and its whole effect lands in one reviewable commit.
+
+Two things it deliberately leaves alone, and prints a reminder about: `LICENSE.md` still carries this template's author and copyright year, and `package.json` still names them as `author`. Both are yours to change — guessing who owns your project is not setup's job.
+
+The AI instruction files are swapped rather than edited because the maintainer versions describe keeping this boilerplate up to date for many future projects, which stops applying the moment you build on top of it. If you don't use AI tooling, `npm run setup -- --ai delete` removes all six. See [Using AI With This Template](using-ai.md#the-instruction-files) for what each file is for.
 
 ## 2. Name your Workers
 
-This step assigns the Cloudflare Worker resource names for your project. These are not GitHub repository names, branch names, domains, or API tokens. A Worker name identifies a deployed Worker inside your Cloudflare account, so choose names that are unique and recognizable.
+`npm run setup` already wrote these from the slug you gave it. This step is here so you know what it named and why, and so you can check it before anything is deployed.
+
+These are Cloudflare Worker resource names — not GitHub repository names, branch names, domains, or API tokens. A Worker name identifies a deployed Worker inside your Cloudflare account.
 
 | Wrangler field | Example value | Used for |
 | --- | --- | --- |
@@ -76,37 +93,7 @@ This step assigns the Cloudflare Worker resource names for your project. These a
 | `env.non-prod.name` | `acme-weather-api-non-prod` | The Worker deployed when `develop` changes |
 | `env.production.name` | `acme-weather-api-production` | The Worker deployed when `main` changes |
 
-The template ships with:
-
-```jsonc
-{
-  "name": "cloudflare-workers-discord-template",
-  "main": "src/index.js",
-  "compatibility_date": "2026-08-18",
-  "observability": {
-    "enabled": true
-  },
-  "secrets": {
-    "required": ["DISCORD_PUBLIC_KEY", "DISCORD_APPLICATION_ID", "DISCORD_TOKEN"]
-  },
-  "env": {
-    "non-prod": {
-      "name": "cloudflare-workers-discord-template-non-prod",
-      "secrets": {
-        "required": ["DISCORD_PUBLIC_KEY", "DISCORD_APPLICATION_ID", "DISCORD_TOKEN"]
-      }
-    },
-    "production": {
-      "name": "cloudflare-workers-discord-template-production",
-      "secrets": {
-        "required": ["DISCORD_PUBLIC_KEY", "DISCORD_APPLICATION_ID", "DISCORD_TOKEN"]
-      }
-    }
-  }
-}
-```
-
-Change only the three `name` values:
+For the slug `acme-weather-api`, `wrangler.jsonc` now reads:
 
 ```jsonc
 {
@@ -136,9 +123,9 @@ Change only the three `name` values:
 }
 ```
 
-The `secrets.required` blocks declare *names*, never values: they tell Wrangler which secrets each environment must have. Leave them as they are and see [Create your Discord applications](#3-create-your-discord-applications) for where the values come from.
+Setup changed the three `name` values and nothing else in this file. The `secrets.required` blocks declare *names*, never values: they tell Wrangler which secrets each environment must have. Leave them as they are and see [Create your Discord applications](#3-create-your-discord-applications) for where the values come from.
 
-Also update `name` in `package.json` so the package and the Worker agree. Confirm in the Cloudflare dashboard that these names are available and that the non-production and production names refer to separate Workers.
+Setup also set `name` in `package.json` to the same slug, so the package and the Worker agree. What is left for you is a look in the Cloudflare dashboard: confirm the names are available, and that the non-production and production names refer to separate Workers.
 
 Leave `compatibility_date` alone unless you have a reason to move it, and treat any change to it as a deliberate, documented decision. `observability.enabled` captures logs and telemetry for the deployed Worker; keep it on.
 
@@ -241,14 +228,15 @@ Do all of this for the non-production application now. The production applicatio
 
 ### Run it locally
 
-Do this before anything that touches Cloudflare. Local development needs no Cloudflare account, no deployed Worker, and no production application — only your **non-production** application's values. Copy the tracked example file and fill them in:
+Do this before anything that touches Cloudflare. Local development needs no Cloudflare account, no deployed Worker, and no production application — only your **non-production** application's values.
+
+`npm run setup` already created `.dev.vars` for you, holding a `replace-me` placeholder for each name. Fill in the four values from your non-production application, then:
 
 ```sh
-cp .dev.vars.example .dev.vars
 npm run dev
 ```
 
-`.dev.vars` is ignored by Git — only `.dev.vars.example` is tracked, and it contains nothing but placeholders. Because `wrangler.jsonc` declares `secrets.required`, Wrangler loads exactly those three names from `.dev.vars` and warns about any that are missing, so `npm run dev` starts either way: `GET /` answers `OK`, and `POST /interactions` answers `401` for anything it cannot verify.
+`.dev.vars` is ignored by Git, and setup pruned the `.dev.vars.example` it was copied from — the example existed to seed exactly this file. Because `wrangler.jsonc` declares `secrets.required`, Wrangler loads those three names from `.dev.vars` and warns about any still unset, so `npm run dev` starts either way: `GET /` answers `OK`, and `POST /interactions` answers `401` for anything it cannot verify.
 
 Making the local Worker reachable by Discord itself needs a tunnel; see [Developing against a local tunnel](discord-bot.md#developing-against-a-local-tunnel) for how, and [Discord bot](discord-bot.md) for the interaction lifecycle this endpoint implements.
 
@@ -311,10 +299,25 @@ If your repository starts on a different default branch, rename it to `main` fir
 
 Deployment is disabled by default. This is what stops a brand-new project from attempting a Cloudflare deployment before a Worker, an account, and credentials exist.
 
-Create these GitHub Actions environments:
+`npm run setup:github` does the structural half of this step and [step 6](#6-configure-branch-protection) in one go:
+
+```sh
+npm run setup:github -- --dry-run   # print every gh command, run none
+npm run setup:github                # apply, leaving deployment disabled
+```
+
+It needs the [GitHub CLI](https://cli.github.com), signed in with `gh auth login`. It creates the two environments with their branch restrictions and the branch ruleset, then reads all of it back and reports anything GitHub did not save. It is idempotent, and re-running it is how you re-check these settings later — after a plan change, an organization policy change, or a visibility change.
+
+What it cannot do is set a secret **value**. It reports which secret *names* exist per environment and names the missing ones; you add the values by hand, below. Unlike `npm run setup`, this script is permanent and stays in your project.
+
+The tables in this step and the next are the reference for what it applies, what to check in its readback, and how to do the same by hand in the web interface instead.
+
+These are the environments it creates:
 
 - `non-prod`, restricted to the `develop` branch.
 - `production`, restricted to the `main` branch, with required reviewers enabled.
+
+Required reviewers are the setting most likely not to save. GitHub enforces environment protection rules on a **private** repository only under Team or Enterprise; on a free private repository it creates the environment without them and says nothing. That silence is the reason the script reads back rather than trusting its own success.
 
 Add these secrets at repository or environment scope:
 
@@ -333,7 +336,13 @@ A repository-scope `DISCORD_TOKEN` would be visible to both environments and wou
 
 `DISCORD_PUBLIC_KEY` is deliberately absent: only the Worker verifies signatures, and it reads that from the Cloudflare secret set in [step 3](#set-them-on-each-worker). CI never needs it.
 
-Then, and only then, enable deployment. `DEPLOY_ENABLED` is deliberately a repository **variable**, not a secret: it holds no sensitive value and exists purely as the explicit opt-in. Add it with the value `true` under **Settings > Secrets and variables > Actions > Variables**.
+Then, and only then, enable deployment. `DEPLOY_ENABLED` is deliberately a repository **variable**, not a secret: it holds no sensitive value and exists purely as the explicit opt-in. Add it with the value `true` under **Settings > Secrets and variables > Actions > Variables**, or run:
+
+```sh
+npm run setup:github -- --enable-deploy
+```
+
+The flag is separate because setting this variable is the act that makes pushes deploy. `npm run setup:github` without it creates everything else and leaves deployment off, and an interactive run asks before setting it — there is no default that switches deployment on for you.
 
 Setting `DEPLOY_ENABLED` does not deploy anything by itself — it only removes the guard inside a step that already exists in [.github/workflows/deploy.yml](../.github/workflows/deploy.yml). `deploy.yml` triggers on `push` to `main` or `develop`; a repository variable change is not a push, so it does not start a run. The next push or merge to `develop` or `main` is what actually deploys — the sequence in that run is: checkout, install, lint, test, and only if all of that passes and `DEPLOY_ENABLED` is `true`, `wrangler deploy --env non-prod` (from `develop`) or `--env production` (from `main`, after the `production` environment's required reviewer approves), then command registration. If you enabled the flag without a fresh push already queued, merge or push once more to trigger the first real deployment. Until `DEPLOY_ENABLED` exists, the deploy job is skipped every time and no Cloudflare credentials are used.
 
@@ -381,9 +390,11 @@ Leave your Workers unconnected in the dashboard. `.github/workflows/deploy.yml` 
 
 ## 6. Configure branch protection
 
-This template does not ship a ruleset file to import. An imported JSON payload can save with fewer rules than it declares — plan tier, organization policy, and repository visibility all affect what GitHub accepts — so a committed file that looks authoritative can silently stop matching what's actually enforced. Configure the settings by hand instead, and verify what actually saved.
+This template does not ship a ruleset file to import. An imported JSON payload can save with fewer rules than it declares — plan tier, organization policy, and repository visibility all affect what GitHub accepts — so a committed file that looks authoritative can silently stop matching what's actually enforced. Whichever way you apply these settings, verify what actually saved.
 
-Go to **Settings > Rules > Rulesets > New branch ruleset** (classic **Settings > Branches** protection rules work too) and apply this to both `main` and `develop`:
+`npm run setup:github` ([step 5](#5-configure-github-environments-and-secrets)) does both. It creates or updates a ruleset named `protected-branches` holding exactly the table below, then reads it back and names every rule GitHub dropped, exiting non-zero if any did. That readback is the point: a `201` from the rulesets API means your request was accepted, not that every rule in it survived.
+
+To do it by hand instead, go to **Settings > Rules > Rulesets > New branch ruleset** (classic **Settings > Branches** protection rules work too) and apply this to both `main` and `develop`:
 
 | Setting | Value | Why |
 | --- | --- | --- |
@@ -400,7 +411,9 @@ Go to **Settings > Rules > Rulesets > New branch ruleset** (classic **Settings >
 
 Do not add a `branch_name_pattern` rule. See [Gitflow and branching](gitflow-and-branching.md#our-approach-to-branches) for why: it requires GitHub Team or Enterprise and is rejected outright on Free and Pro. Branch naming stays enforced through code review.
 
-After saving, confirm it actually took effect — `gh api repos/OWNER/REPOSITORY/rulesets` — and check that the ruleset's `enforcement` is `"active"` and its `rules` array contains everything in the table above. Re-check after any change to organization policy or plan.
+Whatever you add beyond this table, do not commit a ruleset payload to the repository as though it were the applied state. A file that looks authoritative and has quietly stopped matching what GitHub enforces is worse than no file; the readback is the only honest record.
+
+After saving, confirm it actually took effect — `gh api repos/OWNER/REPOSITORY/rulesets` — and check that the ruleset's `enforcement` is `"active"` and its `rules` array contains everything in the table above. `npm run setup:github` performs exactly this readback, prints the comparison, and fails if a rule is missing. Re-check after any change to organization policy or plan.
 
 ## 7. Verify the deployment path
 
@@ -450,12 +463,16 @@ Full details are in [Versioning and changesets](versioning-and-changesets.md).
 
 ## 10. Keeping up with upstream changes
 
-Nothing merges upstream changes into your repository automatically, regardless of which path you chose in [Choosing how to start](#0-choosing-how-to-start). Adopt them deliberately instead. Add this repository as a second remote once:
+Nothing merges upstream changes into your repository automatically, regardless of which path you chose in [Choosing how to start](#0-choosing-how-to-start). Adopt them deliberately instead.
+
+`npm run setup` added this repository as a second remote named `upstream` — unless one already existed, in which case it said so and left it alone. Add it by hand if you need to:
 
 ```sh
 git remote add upstream https://github.com/mbakaitis/cloudflare-workers-discord-template.git
 git fetch upstream
 ```
+
+`package.json`'s `template.commit` records the upstream commit your project started from, so everything after it in `git log upstream/main` is a candidate to adopt.
 
 Then pick up individual changes. `git cherry-pick` works whether or not your repository shares history with this one:
 
@@ -476,18 +493,20 @@ Rollback is a reviewed revert or a deployment of the previous successful commit.
 
 ## Setup is complete when
 
+- `npm run setup` has run once, `package.json` carries its `template` provenance record, and `scripts/setup.js` is gone.
 - `main` and `develop` both exist on your remote.
-- Branch rules prevent direct changes to `main` and `develop`.
+- Branch rules prevent direct changes to `main` and `develop`, and `npm run setup:github` reports no divergence between what was requested and what GitHub saved.
 - The `non-prod` and `production` GitHub environments have the correct branch restrictions, and `production` requires a reviewer.
 - Your three Worker names are distinct, and any bindings are environment-specific and intentional.
 - Two Discord applications exist, and each Worker environment has its own `DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`, and `DISCORD_TOKEN` set — no value shared between them.
-- `npm run dev` starts from your own `.dev.vars`, which is untracked and holds non-production values only.
+- `npm run dev` starts from your own `.dev.vars`, which setup created, is untracked, and holds non-production values only.
 - `npm test` passes, including the contract tests.
 - A merge to `develop` deploys non-production, and an approved merge to `main` deploys production.
 - Each Discord application's Interactions Endpoint URL points at its own deployed Worker and saved successfully, which means Discord's `PING` validation passed.
 - `/ping` answers in your test server.
 - Each GitHub environment holds its own `DISCORD_TOKEN` and `DISCORD_APPLICATION_ID` (plus `DISCORD_GUILD_ID` for `non-prod`), so a deploy registers commands against that environment's application and no other.
-- The AI instruction files describe your project: `claude.md`, `AGENTS.md`, and `.github/copilot-instructions.md` came from the `-for-users` files (or you deleted all six, if you don't use AI tooling).
+- The AI instruction files describe your project: setup renamed the `-for-users` files into `claude.md`, `AGENTS.md`, and `.github/copilot-instructions.md`, or removed all six if you ran it with `--ai delete`. Nothing here is left half-done — setup does all three or none.
+- `LICENSE.md` and `package.json`'s `author` name you rather than the template's author. These are the two things setup deliberately did not change.
 
 ## Adding environment-specific bindings
 

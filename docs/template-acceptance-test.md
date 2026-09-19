@@ -33,7 +33,7 @@ Each phase names what it is proving, the document that drives it, and what count
 
 **Proves:** the README explains what this is before asking anyone to do anything.
 **Do:** read README.md down to the quickstart, and nothing else.
-**Pass:** you could tell a colleague what the template gives them, what it deliberately leaves out, and roughly what it will cost them to set up.
+**Pass:** you could tell a colleague what the template gives them, what it deliberately leaves out, and roughly what it will cost them to set up — including that setup is one command and which four things it deliberately leaves to a human.
 
 ### Phase 1 — Two Discord applications
 
@@ -43,20 +43,33 @@ Each phase names what it is proving, the document that drives it, and what count
 
 ### Phase 2 — Repository and install
 
-**Proves:** the *Use this template* path, the declared Node version, and the AI instruction-file swap.
-**Do:** README steps 2–3, then [Replace the AI instruction files](using-this-template.md#1-create-and-clone-your-repository).
-**Pass:** clean install on the Node version `.nvmrc` declares; after the swap, the repository carries no maintainer-facing instruction content and nothing references the files you renamed away.
+**Proves:** the *Use this template* path and the declared Node version.
+**Do:** README step 2, and the clone and `npm install` half of step 3.
+**Pass:** clean install on the Node version `.nvmrc` declares, with no step you had to work out for yourself.
 
-### Phase 3 — Naming
+### Phase 3 — `npm run setup`
 
-**Proves:** renaming is a bounded, documented edit rather than a search-and-replace hunt.
-**Do:** README step 4.
-**Pass:** no occurrence of `cloudflare-workers-discord-template` remains where it matters, and `npm test` still passes — the contract tests should confirm the rename rather than you eyeballing it.
+**Proves:** the template's central claim — one command turns a fresh copy into a project, and the result is green with **zero** manual edits. `test/contracts/setup-acceptance.template-only.test.js` and `.github/workflows/template-acceptance.yml` both assert this against a `git archive`; this phase is the same claim against a real *Use this template* repository, which is the thing neither of them can be.
+
+**Do:** the `npm run setup` half of README step 3, driven by [Run `npm run setup`](using-this-template.md#1-create-and-clone-your-repository). Run `npm run setup -- --dry-run` first and read the plan, then run it for real and confirm at the prompt. Then run `npm test` and `npm run lint` and **change nothing** first.
+
+**Pass:** all of the following, in one pass:
+
+- The dry run printed a plan you could understand without reading the script, and left `git status` clean.
+- `npm test` and `npm run lint` pass with no edit of any kind. This is the phase, not a preamble to it — an edit you "had to" make is a blocker.
+- `git status` shows one coherent set of changes you would be willing to commit as "set up the project".
+- No occurrence of `cloudflare-workers-discord-template` remains where it matters, in `wrangler.jsonc`, `package.json`, or `package-lock.json`.
+- Three AI instruction files remain, not six and not two, and none carries an instruction contract version.
+- `.dev.vars` exists, holds placeholders, and is untracked. Setup never printed its contents.
+- `package.json` carries a `template` provenance record, and `scripts/setup.js` and the `setup` npm script are gone.
+- Setup printed the reminder about `LICENSE.md` and the `author` field, and you noticed it. If you did not notice it, that is a finding.
+
+**Also do, deliberately:** run `npm run setup` a second time. It must refuse, and say why.
 
 ### Phase 4 — Local, with no accounts
 
-**Proves:** the "steps 1–6 need no Cloudflare account" claim on the README.
-**Do:** README steps 5–6.
+**Proves:** the "steps 1–5 need no Cloudflare account" claim on the README.
+**Do:** README steps 4–5.
 **Pass:** `npm run dev` serves the health path and answers `401` to an unsigned interaction, and `npm test` passes on a machine that has never touched Cloudflare or Discord.
 
 ### Phase 5 — Local tunnel (first contact with real Discord)
@@ -68,14 +81,16 @@ Each phase names what it is proving, the document that drives it, and what count
 
 ### Phase 6 — Branches, environments, and repository rules
 
-**Proves:** the GitHub-side setup, including the parts no test can observe.
-**Do:** README steps 7 and 9, driven by [Configure GitHub environments and secrets](using-this-template.md#5-configure-github-environments-and-secrets) and [Configure branch protection](using-this-template.md#6-configure-branch-protection).
-**Pass:** the Discord secrets are at *environment* scope, not repository scope; `production` requires a reviewer; the required status check name matches the CI job; and the ruleset verification command in the docs shows what the table claims it will.
+**Proves:** the GitHub-side setup, including the parts no test can observe — and that `npm run setup:github` tells the truth about what GitHub actually kept.
+**Do:** README steps 6 and 8, driven by [Configure GitHub environments and secrets](using-this-template.md#5-configure-github-environments-and-secrets) and [Configure branch protection](using-this-template.md#6-configure-branch-protection). Run `npm run setup:github -- --dry-run`, then apply, then read its readback report.
+**Pass:** the Discord secrets are at *environment* scope, not repository scope; the required status check name matches the CI job; and the script's readback agrees with what the GitHub web interface shows on **Settings > Rules** and **Settings > Environments** — check by eye, because the whole value of the readback is that it is honest.
+**Also do, deliberately:** on a **private** repository outside Team or Enterprise, `production` will save without required reviewers. Confirm the readback says so plainly and exits non-zero, rather than reporting success. If the repository is public, note that this case went untested.
+**Then:** re-run `npm run setup:github`. It must report the same state without creating a second ruleset or a duplicate branch policy.
 
 ### Phase 7 — Worker secrets
 
 **Proves:** the promise that a deploy names its missing secrets.
-**Do:** README step 8 / [Set them on each Worker](using-this-template.md#set-them-on-each-worker).
+**Do:** README step 7 / [Set them on each Worker](using-this-template.md#set-them-on-each-worker).
 **Pass:** deliberately leave one secret unset and attempt a real deploy of that environment. It should fail and say which. Then set it.
 **Also note:** this is the first step that needs a Cloudflare account, and the Workers do not exist yet, so Wrangler prompts to create each one as a placeholder. Confirm the docs prepared you for both — an unexpected auth wall, or two Workers appearing in the dashboard before you deployed anything, are exactly the kind of surprise this phase exists to catch.
 
@@ -135,7 +150,7 @@ Findings are being fixed on `feature/acceptance-testing-updates` as the run proc
 | --- | --- | --- | --- | --- |
 | 0 | Passed. | None. | — | — |
 | 1 | Applications created and installed via **OAuth2 > URL Generator**. | The docs said to build an install link but never said *which* scopes or bot permissions to select, so the choice fell to the reader — and the widely-copied answer (`bot` + `Send Messages`) grants more than this template needs. | Friction | **Fixed.** [Install the non-production application in your test server](using-this-template.md#install-the-non-production-application-in-your-test-server) now names the scopes (`applications.commands`, with `bot` optional and why), states that no bot permissions are needed and why, and says that the list is a property of *your* features once you add any. |
-| 2 | `npm test` failed straight after the documented instruction-file swap. | `test/contracts/instructions.test.js` asserted the template's own file layout, so every downstream project failed it on first run: the in-place files carry no contract version once swapped, and the `-for-users` counterparts are gone. A contract test that only passes upstream is worse than no test. | **Blocker** | **Fixed.** The audit now detects the layout (template / project / no AI files) and applies the matching rule, and additionally fails a *half*-finished swap, which nothing caught before. Logic in `test/helpers/instruction-files.js`, fixture-covered per layout. The test itself has since been renamed `test/contracts/instructions.template-only.test.js` and is deleted by a project created from the template. |
+| 3 (recorded as 2, before the setup phase existed) | `npm test` failed straight after the then-manual instruction-file swap. | `test/contracts/instructions.test.js` asserted the template's own file layout, so every downstream project failed it on first run: the in-place files carry no contract version once swapped, and the `-for-users` counterparts are gone. A contract test that only passes upstream is worse than no test. | **Blocker** | **Fixed.** The audit now detects the layout (template / project / no AI files) and applies the matching rule, and additionally fails a *half*-finished swap, which nothing caught before. Logic in `test/helpers/instruction-files.js`, fixture-covered per layout. The test itself has since been renamed `test/contracts/instructions.template-only.test.js` and is deleted by a project created from the template, and the swap is now done by `npm run setup` — which does all three renames or none, so the half-finished state is no longer reachable by following the documentation. |
 
 Worth capturing separately, because they are hard to reconstruct afterwards:
 
