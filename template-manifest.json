@@ -34,6 +34,7 @@
     "test/contracts/manifest.template-only.test.js",
     "test/contracts/setup-acceptance.template-only.test.js",
     "test/contracts/setup-cli.template-only.test.js",
+    "test/contracts/setup-github.template-only.test.js",
     "test/contracts/setup-transforms.template-only.test.js",
     "test/contracts/workflow.template-only.test.js",
     "test/helpers/instruction-files.js",

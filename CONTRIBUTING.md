@@ -88,6 +88,21 @@ Those live in a file named `test/contracts/<subject>.template-only.test.js`, bes
 - Prove the relaxed form can still fail before you call the split done. Break the thing it guards, watch it go red, and revert. A guard nobody has seen fail is not a guard.
 - **Register it in [template-manifest.json](template-manifest.json).** A `.template-only.test.js` file that nobody added to the manifest's `prune` list ships to a project that cannot pass it. `test/contracts/manifest.template-only.test.js` reads `test/contracts/` and fails on any template-only file the manifest does not name, so this is enforced rather than remembered. The same rule applies to anything else added here that is template-only, not just tests.
 
+### Template-owned surface: the manifest and the payload
+
+Two things in this repository exist only to turn a copy of it into somebody's project, and both are read by `npm run setup`:
+
+| Path | What belongs in it |
+| --- | --- |
+| [template-manifest.json](template-manifest.json) | Declarative data, no logic: the paths a new project prunes, the `.changeset/*.md` glob, the directories it removes whole, the `.template/` payload's copy destinations, the six instruction files as maintainer/downstream pairs, the placeholder tokens, and the paths and npm scripts setup deletes as its last act |
+| [.template/](.template/) | The downstream replacements for the documents written from the template's point of view — `README.md`, `CHANGELOG.md`, `docs/using-ai.md`, `docs/using-this-template.md` — as real Markdown files with `{{PLACEHOLDER}}` tokens |
+
+The payload is files rather than strings in a script on purpose. Prose does not belong in JavaScript string literals, and rewriting Markdown sections by regex is the part most likely to break silently on a future edit. Only the documents whose *entire* framing is template-specific get a shipped replacement; everything else survives, with its links to pruned pages rewritten to the upstream blob URL.
+
+**The standing rule: anything you add to this repository that is template-only must be registered in the manifest in the same change.** A file that exists only to maintain the template and is not in `prune` ships to a project that has no use for it, and often cannot pass it. `test/contracts/manifest.template-only.test.js` enforces the parts it can — every path the manifest names must exist, every `.template/` file must have exactly one destination, every placeholder must be both declared and used, and every `*.template-only.test.js` file must be pruned — so a manifest that drifts from the repository fails `npm test` rather than surfacing in somebody's new project.
+
+The reverse also needs saying: `npm run setup:github` is **not** template-only. It is idempotent and it verifies rather than only applying, so re-running it is how a project re-checks its GitHub settings. `test/contracts/setup-github.template-only.test.js` asserts that the manifest leaves it, its library, its shipped test, and its npm script alone.
+
 ### The fresh-project acceptance check
 
 The template's central claim is that `npm run setup` turns a fresh copy into a project that is green with no manual edits. Two checks hold it, at two speeds, because the fast one cannot prove the claim and the slow one cannot live in the unit suite:
@@ -175,7 +190,9 @@ The audit it drives still detects which of the three layouts it is looking at �
 | `docs/` | User-facing guides |
 | `.github/workflows/` | CI, deployment, release, and the fresh-project acceptance run |
 | `.changeset/` | Pending release notes |
+| `scripts/` | The template's own CLIs; `scripts/lib/` holds their pure halves, inside the coverage ratchet |
 | `wrangler.jsonc` | Worker names, compatibility date, environments, bindings |
 | `template-manifest.json` | What is template-only: the paths a new project prunes, the payload's destinations, the instruction-file pairs |
+| `.template/` | The downstream replacements `npm run setup` copies over the template-framed documents |
 | `.template/` | The downstream replacements for the documents written from the template's point of view, with `{{PLACEHOLDER}}` tokens |
 | `scripts/lib/setup.js` | The pure planner that turns the manifest into an ordered list of operations |

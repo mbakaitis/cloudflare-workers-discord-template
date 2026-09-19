@@ -46,6 +46,8 @@ There are two paths to Cloudflare:
 
 Both are skipped until the GitHub Actions repository **variable** `DEPLOY_ENABLED` is set to `true`. That flag is not a secret; it is the explicit opt-in that keeps an unconfigured project from ever contacting Cloudflare. The Cloudflare API token and account ID always remain GitHub secrets.
 
+`npm run setup:github` applies the two environments, their branch restrictions, and the branch ruleset, then reads back what GitHub actually saved and names any difference. Add `--enable-deploy` to set `DEPLOY_ENABLED` at the same time. It never sets a secret value — it reports which secret names are missing.
+
 Do **not** also connect this repository to a Worker through the Cloudflare dashboard's **Settings > Builds** ("Workers Builds" Git integration). That is a separate auto-deploy mechanism, and it bypasses this workflow's environment approvals and test gates.
 
 Keep credentials out of the repository. Secrets belong in `wrangler secret put` for the Workers and in GitHub environment secrets for CI — never in a tracked file.
