@@ -31,7 +31,12 @@ This page exists to help you set up the new project you just created.  Note that
 
 4. **Install the test-bot onto the test-guild**.
 
-    On the new test server you just created in step 3, add the bot to the server.  If you are unsure how to do this, see the [Discord Developer Docs](https://docs.discord.com/developers/quick-start/getting-started#setting-up-an-install-link) for more.
+    On the new test server you just created in step 3, add the bot to the server.  If you are unsure how to do this, see the [Discord Developer Docs](https://docs.discord.com/developers/quick-start/getting-started#setting-up-an-install-link) for more.  Specific sections that are useful include:
+
+    -[setting up an install link](https://docs.discord.com/developers/quick-start/getting-started#setting-up-an-install-link)
+    -[installing your app](https://docs.discord.com/developers/quick-start/getting-started#installing-your-app)
+
+    Other sections there are useful as they explain key Discord features. However, they aren't needed *at this step*.
 
 ### Run it locally.
 
