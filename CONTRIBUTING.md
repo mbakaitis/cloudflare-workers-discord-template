@@ -71,7 +71,7 @@ This exemption disappears the moment the same change also touches code or config
 
 `npm test` runs two suites and a coverage gate, and all three matter:
 
-- **Unit tests** (`test/index.test.js`, Vitest via `@cloudflare/vitest-pool-workers`) exercise the Worker in the real Workers runtime through Miniflare. Cover success, malformed input, and expected error responses.
+- **Unit tests** (`test/index.test.js`, Vitest via `@cloudflare/vitest-plugin`) exercise the Worker in the real Workers runtime through Miniflare. Cover success, malformed input, and expected error responses.
 - **Contract tests** (`test/contracts/`, Node's built-in test runner) protect the promises of the boilerplate — that non-production and production Workers stay distinct, that production bindings never sit at the top level, that deployment stays opt-in, and that the release workflow keeps its shape.
 
 Keep tests deterministic: no live Cloudflare calls, no shared mutable state, no wall-clock dependence, no undeclared credentials.

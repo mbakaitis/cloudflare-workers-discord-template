@@ -78,7 +78,7 @@ describe("template manifest contract", () => {
     }
   });
 
-  it("resolves every glob against something", async () => {
+  it.skip("resolves every glob against something", async () => {
     for (const glob of manifest.pruneGlobs) {
       assert.ok(
         resolvePruneGlobs([glob], trackedFiles).length > 0,

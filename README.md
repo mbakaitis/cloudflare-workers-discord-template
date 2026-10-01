@@ -19,7 +19,7 @@ This is a GitHub template repository. Create your own project from it, copy the 
 
 - **One Discord application per environment.** A non-production Worker never holds a production public key, application ID, or bot token. Combined with having automated deploys, this lets develop branch work progress and be tested without risk of production.
 
-- **Tests that run offline in the real runtime**, using the `@cloudflare/vitest-pool-workers` library, tests for the worker code is checked using Miniflare, simulating the worker environment on a local dev system.  No Cloudflare account, no Discord application, and no network.  Code can be created and tested before enabling the deployment flag.
+- **Tests that run offline in the real runtime**, using the `@cloudflare/vitest-plugin` library, tests for the worker code is checked using Miniflare, simulating the worker environment on a local dev system.  No Cloudflare account, no Discord application, and no network.  Code can be created and tested before enabling the deployment flag.
 
 - **Contract tests** that fail if non-production and production configuration get crossed.
 
